@@ -21,6 +21,7 @@ import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildVars;
+import org.telegram.messenger.BygramGhostMode;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.DownloadController;
@@ -1343,6 +1344,7 @@ public class StoriesController {
     }
 
     public boolean markStoryAsRead(TL_stories.PeerStories userStories, TL_stories.StoryItem storyItem, boolean profile) {
+        boolean blockReadReceipt = BygramGhostMode.shouldBlockStoryReads();
         if (storyItem == null || userStories == null) {
             return false;
         }
@@ -1359,10 +1361,12 @@ public class StoriesController {
             if (!profile) {
                 storiesStorage.updateMaxReadId(dialogId, newReadId);
             }
-            TL_stories.TL_stories_readStories req = new TL_stories.TL_stories_readStories();
-            req.peer = MessagesController.getInstance(currentAccount).getInputPeer(dialogId);
-            req.max_id = storyItem.id;
-            ConnectionsManager.getInstance(currentAccount).sendRequest(req, null);
+            if (!blockReadReceipt) {
+                TL_stories.TL_stories_readStories req = new TL_stories.TL_stories_readStories();
+                req.peer = MessagesController.getInstance(currentAccount).getInputPeer(dialogId);
+                req.max_id = storyItem.id;
+                ConnectionsManager.getInstance(currentAccount).sendRequest(req, null);
+            }
             NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.storiesReadUpdated);
             return true;
         }

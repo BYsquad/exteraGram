@@ -686,13 +686,11 @@ public class FiltersSetupActivity extends BaseFragment implements NotificationCe
             filtersSectionEnd = items.size();
 
             int sectionStart = ExteraConfig.getSectionsSeparatedHeaders() ? filtersStartPosition : filtersSectionStart;
-            if (listView != null) listView.forcedSections.add(AndroidUtilities.pack(sectionStart, filtersSectionEnd - 1 + (dialogFilters.size() < getMessagesController().dialogFiltersLimitPremium ? 1 : 0)));
+            if (listView != null) listView.forcedSections.add(AndroidUtilities.pack(sectionStart, filtersSectionEnd));
         } else {
             filtersSectionStart = filtersSectionEnd = -1;
         }
-        if (dialogFilters.size() < getMessagesController().dialogFiltersLimitPremium) {
-            items.add(ItemInner.asButton(LocaleController.getString(R.string.CreateNewFilter)));
-        }
+        items.add(ItemInner.asButton(LocaleController.getString(R.string.CreateNewFilter)));
         items.add(ItemInner.asShadow(null));
         folderTagsPosition = items.size();
         showTagsRow = items.size();
@@ -728,13 +726,7 @@ public class FiltersSetupActivity extends BaseFragment implements NotificationCe
         orderChanged = false;
         getNotificationCenter().postNotificationName(NotificationCenter.dialogFiltersUpdated);
         getMessagesStorage().saveDialogFiltersOrder();
-        TLRPC.TL_messages_updateDialogFiltersOrder req = new TLRPC.TL_messages_updateDialogFiltersOrder();
-        ArrayList<MessagesController.DialogFilter> filters = getMessagesController().getDialogFilters();
-        for (int a = 0, N = filters.size(); a < N; a++) {
-            MessagesController.DialogFilter filter = filters.get(a);
-            req.order.add(filter.id);
-        }
-        getConnectionsManager().sendRequest(req, (response, error) -> {
+        getConnectionsManager().sendRequest(getMessagesController().createDialogFiltersOrderRequest(), (response, error) -> {
             if (done != null) {
                 AndroidUtilities.runOnUIThread(done);
             }
@@ -856,13 +848,7 @@ public class FiltersSetupActivity extends BaseFragment implements NotificationCe
     }
 
     public void createFolder(INavigationLayout navigationLayout) {
-        final int count = getMessagesController().getDialogFilters().size();
-        if (
-            count - 1 >= getMessagesController().dialogFiltersLimitDefault && !getUserConfig().isPremium() ||
-            count >= getMessagesController().dialogFiltersLimitPremium
-        ) {
-            showDialog(new LimitReachedBottomSheet(this, getContext(), LimitReachedBottomSheet.TYPE_FOLDERS, currentAccount, null));
-        } else if (navigationLayout != null) {
+        if (navigationLayout != null) {
             navigationLayout.presentFragment(new FilterCreateActivity());
         }
     }
@@ -1054,6 +1040,11 @@ public class FiltersSetupActivity extends BaseFragment implements NotificationCe
                             builder.setMessage(LocaleController.getString(R.string.FilterDeleteAlert));
                             builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
                             builder.setPositiveButton(LocaleController.getString(R.string.Delete), (dialog2, which2) -> {
+                                if (filter.isLocal()) {
+                                    getMessagesController().removeFilter(filter);
+                                    getMessagesStorage().deleteDialogFilter(filter);
+                                    return;
+                                }
                                 AlertDialog progressDialog = null;
                                 if (getParentActivity() != null) {
                                     progressDialog = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
@@ -1107,10 +1098,6 @@ public class FiltersSetupActivity extends BaseFragment implements NotificationCe
                         MessagesController.DialogFilter filter = new MessagesController.DialogFilter();
                         filter.name = suggested.filter.title.text;
                         filter.entities = suggested.filter.title.entities;
-                        filter.id = 2;
-                        while (getMessagesController().dialogFiltersById.get(filter.id) != null) {
-                            filter.id++;
-                        }
                         filter.order = getMessagesController().getDialogFilters().size();
                         filter.pendingUnreadCount = filter.unreadCount = -1;
                         for (int b = 0; b < 2; b++) {

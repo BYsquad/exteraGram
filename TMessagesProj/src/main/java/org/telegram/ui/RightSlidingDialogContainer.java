@@ -61,6 +61,7 @@ public abstract class RightSlidingDialogContainer extends FrameLayout {
             return;
         }
         this.navigationLayout = navigationLayout;
+        if (ChatActivity.requireBygramPassword(fragment, getContext(), () -> presentFragment(navigationLayout, fragment))) return;
         if (fragment.onFragmentCreate()) {
             fragment.setInPreviewMode(true);
             fragment.setParentLayout(navigationLayout);

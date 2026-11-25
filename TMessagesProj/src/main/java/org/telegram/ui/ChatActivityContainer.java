@@ -69,6 +69,7 @@ public class ChatActivityContainer extends FrameLayout {
     }
 
     protected void initChatActivity() {
+        if (ChatActivity.requireBygramPassword(chatActivity, getContext(), this::initChatActivity)) return;
         if (!chatActivity.onFragmentCreate()) {
             return;
         }

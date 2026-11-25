@@ -1,30 +1,14 @@
 <p align="center">
-  <img src="TMessagesProj/src/main/res-appicons/mipmap-xxxhdpi/ic_launcher.webp" width="96" alt="exteraGram">
+  <img src="TMessagesProj/src/main/res/drawable-nodpi/bygram_logo_new.png" width="96" alt="BYgram">
 </p>
 
-<h1 align="center">exteraGram</h1>
+<h1 align="center">BYgram Android</h1>
 
-<p align="center">
-  A third-party Telegram client for Android, built on the
-  <a href="https://github.com/DrKLO/Telegram">official sources</a>.
-</p>
+BYgram — клиент Telegram для Android на основе [exteraGram](https://github.com/exteraSquad/exteraGram).
+В приложении используются темы, паки иконок, настройки интерфейса и система плагинов exteraGram.
+Документация Python SDK находится в [plugins-pysdk](plugins-pysdk/README.md).
 
-<p align="center">
-  <a href="https://t.me/exteraGram"><img src="https://img.shields.io/badge/Channel-Telegram-blue.svg" alt="Channel"></a>
-  <a href="https://t.me/exteraChat"><img src="https://img.shields.io/badge/Chat-Telegram-blue.svg" alt="Chat"></a>
-  <a href="https://t.me/exteraReleases"><img src="https://img.shields.io/badge/Download-Telegram-blue.svg" alt="Download"></a>
-  <a href="https://crowdin.com/project/exteralocales"><img src="https://img.shields.io/badge/Translate-Crowdin-green.svg" alt="Crowdin"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-orange.svg" alt="License"></a>
-</p>
-
-## What it adds
-
-- Plugins written in Python that can hook into the app, with their own settings and an SDK
-  ([`plugins-pysdk`](plugins-pysdk/README.md)).
-- Material You themes, icon packs and alternative app icons.
-- A long list of interface and chat options that the official client does not have.
-
-Releases are published in [@exteraReleases](https://t.me/exteraReleases).
+[Документация BYgram](docs/readme.md) · [История изменений](changelog.md) · [Канал BYgram](https://t.me/BYgram_official)
 
 ## Editions
 
@@ -41,7 +25,7 @@ ARM build. `beta` is a universal ARM build with beta naming.
 ### Requirements
 
 - Android Studio with support for Android Gradle Plugin 9.1, or just JDK 17 and the command line
-- Android SDK 36 and NDK 29.0.14206865
+- Android SDK 37, Build Tools 36.0.0, NDK 29.0.14206865 and CMake 4.x
 - Python 3.11 for the `full` flavor, on `PATH` as `python3.11` or set as `python.build` in
   `local.properties`
 
@@ -49,7 +33,7 @@ ARM build. `beta` is a universal ARM build with beta naming.
 
 1. Clone the repository with its submodules:
    ```bash
-   git clone --recursive --shallow-submodules https://github.com/exteraSquad/exteraGram.git
+   git clone --branch bygram/exteragram-base --recursive --shallow-submodules https://github.com/BYsquad/exteraGram.git
    ```
    If you cloned without `--recursive`:
    ```bash
@@ -69,8 +53,8 @@ ARM build. `beta` is a universal ARM build with beta naming.
    Maps key in the [Google Cloud console](https://console.cloud.google.com/google/maps-apis/credentials).
    Do not ship builds with someone else's keys.
 3. [Generate a signing key](https://developer.android.com/studio/publish/app-signing#generate-key)
-   and save the keystore as `TMessagesProj/config/exteraGram.jks`. Debug builds are signed with it
-   too.
+   and save the keystore as `TMessagesProj/config/release.keystore`. Debug builds are signed with it
+   too. To update an existing BYgram installation, use the signing key of that installation.
 4. Build:
    ```bash
    ./gradlew :TMessagesProj:assembleFullArm64Debug
@@ -86,6 +70,7 @@ analyzer from GitHub; the analyzer is cached in `Tools/temp` for offline builds.
 Telegram's own strings come from the
 [official translations](https://translations.telegram.org/en/android/). Strings that exist only in
 exteraGram are translated on [Crowdin](https://crowdin.com/project/exteralocales).
+BYgram strings are maintained alongside them in the English, Russian and Ukrainian resource files.
 
 ## Thanks
 

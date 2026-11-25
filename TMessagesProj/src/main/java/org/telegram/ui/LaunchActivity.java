@@ -105,7 +105,6 @@ import com.exteragram.messenger.pillstack.core.PillStackConfig;
 import com.exteragram.messenger.pillstack.core.PillType;
 import com.exteragram.messenger.plugins.PluginsConstants;
 import com.exteragram.messenger.plugins.PluginsController;
-import com.exteragram.messenger.updater.UpdaterUtils;
 import com.exteragram.messenger.utils.IntentsController;
 import com.exteragram.messenger.utils.ui.MonetUtils;
 import com.exteragram.messenger.utils.ui.predictiveback.PredictiveBackAnimationHelper;
@@ -131,6 +130,8 @@ import org.telegram.messenger.BirthdayController;
 import org.telegram.messenger.BotGuardHelper;
 import org.telegram.messenger.BotWebViewVibrationEffect;
 import org.telegram.messenger.BuildVars;
+import org.telegram.messenger.BygramUpdates;
+import org.telegram.messenger.BygramAccountService;
 import org.telegram.messenger.ChannelBoostsController;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.ContactsController;
@@ -6323,67 +6324,33 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     }
 
     public void checkAppUpdate(boolean force, Browser.Progress progress) {
-        if (!force) {
-            long now = System.currentTimeMillis();
-            if (Math.abs(now - SharedConfig.lastUpdateCheckTime) < TimeUnit.MINUTES.toMillis(30)
-                    || Math.abs(now - ExteraConfig.getUpdateScheduleTimestamp()) < TimeUnit.HOURS.toMillis(1)) {
-                return;
-            }
+        if (!force && System.currentTimeMillis() - SharedConfig.lastUpdateCheckTime < TimeUnit.MINUTES.toMillis(30)) {
+            return;
         }
         SharedConfig.lastUpdateCheckTime = System.currentTimeMillis();
         SharedConfig.saveConfig();
-        final int accountNum = currentAccount;
-        UpdaterUtils.getAppUpdate((response, error) -> {
-            if (response != null) {
-                final TLRPC.TL_help_appUpdate res = response;
-                AndroidUtilities.runOnUIThread(() -> {
-                    if (SharedConfig.pendingAppUpdate != null && SharedConfig.pendingAppUpdate.version.equals(res.version) && !force && !res.can_not_skip) {
-                        return;
-                    }
-                    final boolean newVersionAvailable = SharedConfig.setNewAppVersionAvailable(res);
-
-                    if (newVersionAvailable) {
-                        if (res.can_not_skip) {
-                            showUpdateActivity(accountNum, res, false);
-                        } else {
-                            ApplicationLoader.applicationLoaderInstance.showUpdateAppPopup(LaunchActivity.this, res, accountNum);
-                            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.appUpdateAvailable);
-                        }
-                    } else {
-                        BaseFragment fragment = getLastFragment();
-
-                        if (SharedConfig.pendingAppUpdate != null) {
-                            SharedConfig.pendingAppUpdate = null;
-                            SharedConfig.saveConfig();
-                            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.appUpdateAvailable);
-                        }
-
-                        if (progress != null) {
-                            progress.end();
-                        }
-
-                        if (fragment != null && force) {
-                            BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.getString(R.string.YourVersionIsLatest)).show();
-                        }
-                    }
-                });
-            } else if (error != null) {
-                AndroidUtilities.runOnUIThread(() -> {
-                    if (progress != null) {
-                        progress.end();
-                    }
-                    if (BuildVars.DEBUG_PRIVATE_VERSION) {
-                        BaseFragment fragment = getLastFragment();
-                        if (fragment != null) {
-                            BulletinFactory.of(fragment).showForError(error);
-                        }
-                    }
-                });
-            }
-        });
         if (progress != null) {
             progress.init();
         }
+        BygramUpdates.check(success -> {
+            if (progress != null) {
+                progress.end();
+            }
+            BaseFragment fragment = getLastFragment();
+            if (fragment == null || isFinishing()) {
+                return;
+            }
+            if (success && BygramUpdates.isAvailable()) {
+                BulletinFactory.of(fragment).createSimpleBulletin(
+                        R.raw.chats_infotip,
+                        LocaleController.getString(R.string.BygramUpdateAvailable),
+                        LocaleController.getString(R.string.BygramDownloadUpdate),
+                        () -> Browser.openUrl(this, BygramUpdates.DOWNLOAD_URL)).show();
+            } else if (force) {
+                BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip,
+                        LocaleController.getString(success ? R.string.BygramUpdateCurrent : R.string.BygramUpdateFailed)).show();
+            }
+        });
     }
 
     public void checkAppUpdateOld(boolean force, Browser.Progress progress) {
@@ -7465,6 +7432,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     @Override
     protected void onResume() {
         super.onResume();
+        BygramAccountService.pollProfileViews(currentAccount);
         WidgetMedia.onAppPaused(false);
         isResumed = true;
         PipCoordinator.getInstance().onActivityResume(this);

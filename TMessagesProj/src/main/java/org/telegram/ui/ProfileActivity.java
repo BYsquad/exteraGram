@@ -184,6 +184,11 @@ import org.telegram.messenger.AuthTokensHelper;
 import org.telegram.messenger.BillingController;
 import org.telegram.messenger.BirthdayController;
 import org.telegram.messenger.BuildVars;
+import org.telegram.messenger.BygramAccountService;
+import org.telegram.messenger.BygramActivityController;
+import org.telegram.messenger.BygramActivitySettings;
+import org.telegram.messenger.BygramBadgeController;
+import org.telegram.messenger.BygramFlame;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.ChatThemeController;
 import org.telegram.messenger.ContactsController;
@@ -279,6 +284,8 @@ import org.telegram.ui.Components.BackButtonMenu;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
+import org.telegram.ui.Components.BygramBadgeDrawable;
+import org.telegram.ui.Components.BygramFlameBadge;
 import org.telegram.ui.Components.ButtonBounce;
 import org.telegram.ui.Components.CanvasButton;
 import org.telegram.ui.Components.ChatActivityInterface;
@@ -424,6 +431,23 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private String nameTextViewRightDrawable2ContentDescription = null;
     /** The status under the name, or the description of the photo while the avatar is expanded. */
     private AnimatedClickableSmallTextView onlineTextView;
+    private BygramFlame bygramProfileFlame;
+    private int bygramProfileFlameDays;
+    private boolean bygramProfileFlameActive;
+    private boolean bygramProfileVisible;
+    private String bygramProfileActivity;
+    private final Runnable refreshBygramProfileActivity = new Runnable() {
+        @Override public void run() {
+            if (!bygramProfileVisible) return;
+            BygramActivityController.get(currentAccount, userId, activity -> {
+                if (bygramProfileVisible && !TextUtils.equals(activity, bygramProfileActivity)) {
+                    bygramProfileActivity = activity;
+                    updateProfileData(false);
+                }
+            });
+            AndroidUtilities.runOnUIThread(this, 7_000);
+        }
+    };
     private RLottieImageView writeButton;
     private AnimatorSet writeButtonAnimation;
     private Drawable lockIconDrawable;
@@ -10307,6 +10331,25 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     @Override
     public void onResume() {
         super.onResume();
+        if (!isInPreviewMode()) {
+            TLRPC.User viewedUser = userId > 0 ? getMessagesController().getUser(userId) : null;
+            BygramActivityController.setCurrentActivity(currentAccount, BygramActivitySettings.ACTIVITY_PROFILE, getDialogId(), viewedUser, currentChat);
+            recordBygramProfileView(viewedUser);
+            if (BygramFlame.supportsPeer(viewedUser)) {
+                bygramProfileVisible = true;
+                AndroidUtilities.cancelRunOnUIThread(refreshBygramProfileActivity);
+                refreshBygramProfileActivity.run();
+                if (bygramProfileFlame == null) {
+                    bygramProfileFlame = new BygramFlame(currentAccount, viewedUser.id, (days, activeDay, lostDays, remaining, needsConfirmation) -> {
+                        if (!bygramProfileVisible || days == bygramProfileFlameDays && (activeDay != 0) == bygramProfileFlameActive) return;
+                        bygramProfileFlameDays = days;
+                        bygramProfileFlameActive = activeDay != 0;
+                        updateProfileData(false);
+                    });
+                }
+                bygramProfileFlame.resume();
+            }
+        }
         mainTabsHiddenByScroll = false;
         hideOnScrollTracker.reset();
         updateMainTabsVisibility();
@@ -10362,6 +10405,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     @Override
     public void onPause() {
         super.onPause();
+        bygramProfileVisible = false;
+        AndroidUtilities.cancelRunOnUIThread(refreshBygramProfileActivity);
+        if (bygramProfileFlame != null) bygramProfileFlame.pause();
+        BygramActivityController.clearCurrentActivity(currentAccount, BygramActivitySettings.ACTIVITY_PROFILE, getDialogId());
         if (undoView != null) {
             undoView.hide(true, 0);
         }
@@ -11164,6 +11211,23 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             return ((VectorAvatarThumbDrawable) imageReceiver.getDrawable()).gradientTools.getAverageColor();
         }
         return AndroidUtilities.calcBitmapColor(avatarImage.getImageReceiver().getBitmap());
+    }
+
+    private void recordBygramProfileView(TLRPC.User viewedUser) {
+        if (userId > 0 && userId != getUserConfig().getClientUserId()
+                && viewedUser != null && !viewedUser.bot && BygramAccountService.profileViewsEnabled(currentAccount)) {
+            TLRPC.User self = getUserConfig().getCurrentUser();
+            if (self != null) {
+                org.json.JSONObject visit = new org.json.JSONObject();
+                try {
+                    visit.put("action", "profile_views_record");
+                    visit.put("owner_id", userId);
+                    visit.put("viewer_name", UserObject.getUserName(self));
+                    visit.put("viewer_username", UserObject.getPublicUsername(self) == null ? "" : UserObject.getPublicUsername(self));
+                    BygramAccountService.profileViewsRequest(currentAccount, visit, (response, botUrl) -> {});
+                } catch (org.json.JSONException e) { FileLog.e(e); }
+            }
+        }
     }
 
     private void updateOnlineCount(boolean notify) {
@@ -12320,6 +12384,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             } else {
                 isOnline[0] = false;
                 newString2 = LocaleController.formatUserStatus(currentAccount, user, isOnline, shortStatus ? new boolean[1] : null);
+                if (!TextUtils.isEmpty(bygramProfileActivity)) newString2 = bygramProfileActivity;
                 hiddenStatusButton = user != null && !isOnline[0] && !getUserConfig().isPremium() && user.status != null && (user.status instanceof TLRPC.TL_userStatusRecently || user.status instanceof TLRPC.TL_userStatusLastMonth || user.status instanceof TLRPC.TL_userStatusLastWeek) && user.status.by_me;
                 if (onlineTextView != null && !mediaHeaderVisible) {
                     int key = isOnline[0] && peerColor == null ? Theme.key_profile_status : Theme.key_actionBarDefaultSubtitle;
@@ -12340,6 +12405,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 avatarImage.setAnimateFromImageReceiver(fromAvatarImage.getImageReceiver());
             }
             {
+                if (bygramProfileFlameDays > 0) {
+                    newString = new android.text.SpannableStringBuilder(newString).append('\u00a0')
+                            .append(new BygramFlameBadge(getContext(), bygramProfileFlameDays, bygramProfileFlameActive).text());
+                }
                 if (!nameTextView.getText().equals(newString)) {
                     nameTextView.setText(newString);
                 }
@@ -12416,7 +12485,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 }
 
                 nameTextView.setRightDrawable(rightDrawable1);
-                nameTextView.setRightDrawable2(rightDrawable2);
+                nameTextView.setRightDrawable2(BygramBadgeController.hasBadge(user)
+                        ? new BygramBadgeDrawable(getContext(), false, 18, rightDrawable2) : rightDrawable2);
 
                 rightIconIsStatus = hasStatus;
                 rightIconIsPremium = !hasStatus && isPremium && badge == null;
@@ -12726,7 +12796,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 }
 
                 nameTextView.setRightDrawable(rightDrawable1);
-                nameTextView.setRightDrawable2(rightDrawable2);
+                nameTextView.setRightDrawable2(BygramBadgeController.hasBadge(chat)
+                        ? new BygramBadgeDrawable(getContext(), true, 18, rightDrawable2) : rightDrawable2);
 
                 if (badge != null && (rightDrawable1 == badgeDrawable || rightDrawable2 == badgeDrawable)) {
                     TLRPC.Chat finalChat = chat;

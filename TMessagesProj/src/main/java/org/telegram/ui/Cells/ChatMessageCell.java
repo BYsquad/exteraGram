@@ -301,6 +301,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
 
     public ExpiredStoryView expiredStoryView;
     private boolean skipFrameUpdate;
+    private Drawable bygramDeletedDrawable;
 
     public ChannelRecommendationsCell channelRecommendationsCell;
     private final PostRunnableHolder postRunnableHolder = new PostRunnableHolder();
@@ -16734,6 +16735,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         if (additionalDrawableWidth != 0) {
             timeTextWidth = timeWidth += additionalDrawableWidth;
         }
+        if (currentMessageObject.isBygramDeleted()) {
+            timeWidth += dp(18);
+        }
         if (currentMessageObject.scheduled && currentMessageObject.messageOwner.date == 0x7FFFFFFE || currentMessageObject.notime) {
             timeWidth -= dp(8);
         }
@@ -18944,7 +18948,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             return;
         }
 
-        final int sponosoredAlpha = (int) (255 * (1f - isSponsoredMessageHidden.getFloatValue()));
+        final int sponosoredAlpha = (int) (255 * (1f - isSponsoredMessageHidden.getFloatValue()) * (currentMessageObject.isBygramDeleted() ? 0.62f : 1f));
         if (sponosoredAlpha == 0) {
             return;
         }
@@ -23518,6 +23522,8 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             canvas.restore();
         }
 
+        drawBygramDeletedStatus(canvas, alpha);
+
         if (currentMessageObject.isOutOwner()) {
             int currentStatus = transitionParams.createStatusDrawableParams();
             if (transitionParams.lastStatusDrawableParams >= 0 && transitionParams.lastStatusDrawableParams != currentStatus && !statusDrawableAnimationInProgress) {
@@ -23742,6 +23748,23 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 }
             }
         }
+    }
+
+    private void drawBygramDeletedStatus(Canvas canvas, float alpha) {
+        if (!currentMessageObject.isBygramDeleted()) {
+            return;
+        }
+        if (bygramDeletedDrawable == null) {
+            bygramDeletedDrawable = getResources().getDrawable(R.drawable.msg_delete).mutate();
+        }
+        int size = dp(14);
+        int left = (int) (drawTimeX + timeLayout.getLineRight(0) + dp(2));
+        int top = (int) (drawTimeY + (timeLayout.getHeight() - size) / 2f);
+        bygramDeletedDrawable.setColorFilter(new PorterDuffColorFilter(Theme.chat_timePaint.getColor(), PorterDuff.Mode.SRC_IN));
+        bygramDeletedDrawable.setAlpha((int) (255 * alpha * (shouldDrawTimeOnMedia() ? timeAlpha : 1f)));
+        bygramDeletedDrawable.setBounds(left, top, left + size, top + size);
+        bygramDeletedDrawable.draw(canvas);
+        bygramDeletedDrawable.setAlpha(255);
     }
 
     public float getTimeX() {

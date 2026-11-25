@@ -223,6 +223,12 @@ import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.LanguageDetector;
 import org.telegram.messenger.LiteMode;
+import org.telegram.messenger.BygramAccountService;
+import org.telegram.messenger.BygramActivityController;
+import org.telegram.messenger.BygramActivitySettings;
+import org.telegram.messenger.BygramFlame;
+import org.telegram.messenger.BygramGroupActivity;
+import org.telegram.messenger.BygramSpyMode;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.LocationController;
 import org.telegram.messenger.MediaController;
@@ -1496,7 +1502,43 @@ public class ChatActivity extends BaseFragment implements
     public final static int OPTION_GENERATE = 206;
     private final static int OPTION_IMPORT_SETTINGS = 207;
     private final static int OPTION_PLUGINS_ITEMS = 208;
+    private final static int OPTION_BYGRAM_EDIT_HISTORY = 1001;
     private final static int OPTION_GO_TO_POST = 209;
+
+    private static final int RESTORE_FLAME = 28003;
+    private static final int ENABLE_FLAME = 28004;
+    private static final int FLAME_STATS = 28005;
+    private BygramFlame bygramFlame;
+    private org.telegram.ui.Components.BygramFlameEffect bygramFlameEffect;
+    private int bygramFlameLostDays;
+    private int bygramFlameRestoresLeft;
+    private int bygramFlameDays;
+    private BygramGroupActivity bygramGroupActivity;
+    private String bygramRemoteActivity = "";
+    private long bygramRemoteActivityTime;
+
+    public String getBygramActivitySubtitle() {
+        if (bygramGroupActivity != null && !bygramGroupActivity.text().isEmpty()) return bygramGroupActivity.text();
+        return System.currentTimeMillis() - bygramRemoteActivityTime < 60_000 ? bygramRemoteActivity : "";
+    }
+    private final Runnable bygramActivityRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (paused) return;
+            if (currentUser != null && currentUser.id != getUserConfig().getClientUserId()
+                    && (bygramGroupActivity == null || bygramGroupActivity.loaded() && bygramGroupActivity.text().isEmpty())) {
+                BygramActivityController.get(currentAccount, currentUser.id, activity -> {
+                    if (paused || avatarContainer == null) return;
+                    bygramRemoteActivity = activity == null ? "" : activity;
+                    bygramRemoteActivityTime = System.currentTimeMillis();
+                    avatarContainer.updateSubtitle();
+                });
+            }
+            AndroidUtilities.runOnUIThread(this, 7_000);
+        }
+    };
+
+
 
     private final Client client = new Client.Builder().build();
 
@@ -2988,7 +3030,45 @@ public class ChatActivity extends BaseFragment implements
         scrimBlur3Factory.setLinkedDrawablesRef(glassAttachedDrawables);
     }
 
+    private BlurredBackgroundDrawableViewFactory glassFactory() {
+        return LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? glassBackgroundDrawableFactory : glassBackgroundDrawableFactoryFrosted;
+    }
+
     private NotificationCenter.ObserversGroup observersGroup;
+
+    public static boolean requireBygramPassword(BaseFragment fragment, android.content.Context context, Runnable retry) {
+        if (!(fragment instanceof ChatActivity)) return false;
+        long userId = fragment.getArguments().getLong("user_id", 0);
+        long chatId = fragment.getArguments().getLong("chat_id", 0);
+        long dialogId = userId != 0 ? userId : chatId != 0 ? -chatId : 0;
+        int account = fragment.getCurrentAccount();
+        if (dialogId != 0 && org.telegram.messenger.BygramChatPrivacy.isHidden(account, dialogId)
+                && !org.telegram.messenger.BygramChatPrivacy.isHiddenAllowed(account, dialogId)) return true;
+        if (dialogId == 0 || !org.telegram.messenger.BygramChatPrivacy.isProtected(account, dialogId)
+                || org.telegram.messenger.BygramChatPrivacy.isAllowed(account, dialogId)) return false;
+        if (context == null) return true;
+        android.widget.EditText input = BygramPrivateChatsActivity.createDialogInput(context, getString(R.string.BygramChatPassword));
+        input.setInputType(129);
+        org.telegram.ui.ActionBar.AlertDialog passwordDialog = new org.telegram.ui.ActionBar.AlertDialog.Builder(context)
+                .setTitle(getString(R.string.BygramChatPassword)).setView(BygramPrivateChatsActivity.dialogInputContainer(input))
+                .setNegativeButton(getString(R.string.Cancel), (dialog, which) ->
+                        org.telegram.messenger.BygramChatPrivacy.consumeHiddenAllowed(account, dialogId))
+                .setPositiveButton(getString(R.string.OK), (dialog, which) -> {
+                    if (org.telegram.messenger.BygramChatPrivacy.verifyPassword(account, dialogId, input.getText().toString())) {
+                        org.telegram.messenger.BygramChatPrivacy.allowOnce(account, dialogId);
+                        retry.run();
+                    } else {
+                        org.telegram.messenger.BygramChatPrivacy.consumeHiddenAllowed(account, dialogId);
+                        new org.telegram.ui.ActionBar.AlertDialog.Builder(context)
+                                .setTitle(getString(R.string.BygramPrivacyError))
+                                .setPositiveButton(getString(R.string.OK), null).show();
+                    }
+                }).create();
+        passwordDialog.setOnCancelListener(dialog ->
+                org.telegram.messenger.BygramChatPrivacy.consumeHiddenAllowed(account, dialogId));
+        passwordDialog.show();
+        return true;
+    }
 
     @Override
     public boolean onFragmentCreate() {
@@ -2996,6 +3076,13 @@ public class ChatActivity extends BaseFragment implements
         final long chatId = arguments.getLong("chat_id", 0);
         final long userId = arguments.getLong("user_id", 0);
         final int encId = arguments.getInt("enc_id", 0);
+        final long protectedDialogId = userId != 0 ? userId : chatId != 0 ? -chatId : 0;
+        if (protectedDialogId != 0 && org.telegram.messenger.BygramChatPrivacy.isHidden(currentAccount, protectedDialogId)
+                && !org.telegram.messenger.BygramChatPrivacy.consumeHiddenAllowed(currentAccount, protectedDialogId)) return false;
+        if (protectedDialogId != 0 && org.telegram.messenger.BygramChatPrivacy.isProtected(currentAccount, protectedDialogId)
+                && !org.telegram.messenger.BygramChatPrivacy.consumeAllowed(currentAccount, protectedDialogId)) {
+            return false;
+        }
         dialogFolderId = arguments.getInt("dialog_folder_id", 0);
         dialogFilterId = arguments.getInt("dialog_filter_id", 0);
         chatMode = arguments.getInt("chatMode", 0);
@@ -3252,6 +3339,7 @@ public class ChatActivity extends BaseFragment implements
             .add(NotificationCenter.didLoadSendAsPeers)
             .add(NotificationCenter.closeChatActivity)
             .add(NotificationCenter.messagesDeleted)
+            .add(NotificationCenter.bygramMessagesDeleted)
             .add(NotificationCenter.historyCleared)
             .add(NotificationCenter.messageReceivedByServer)
             .add(NotificationCenter.messageReceivedByAck)
@@ -3688,6 +3776,8 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public void onFragmentDestroy() {
+        pauseBygramFlame();
+        pauseBygramActivity();
         if (swipeActionsHelper != null) {
             swipeActionsHelper.detach();
         }
@@ -4434,6 +4524,13 @@ public class ChatActivity extends BaseFragment implements
                     getSendMessagesHelper().sendMessage(SendMessagesHelper.SendMessageParams.of("/help", dialog_id, null, null, null, false, null, null, null, true, 0, 0, null, false));
                 } else if (id == bot_settings) {
                     getSendMessagesHelper().sendMessage(SendMessagesHelper.SendMessageParams.of("/settings", dialog_id, null, null, null, false, null, null, null, true, 0, 0, null, false));
+                } else if (id == RESTORE_FLAME) {
+                    confirmBygramFlameRestore();
+                } else if (id == ENABLE_FLAME) {
+                    confirmBygramFlameAccount();
+                } else if (id == FLAME_STATS) {
+                    org.telegram.ui.Components.BygramFlameStats.show(ChatActivity.this, currentAccount,
+                            getMessagesController().getInputPeer(dialog_id), bygramFlameDays, themeDelegate);
                 } else if (id == search) {
                     openSearchWithText(isSupportedTags() ? "" : null);
                 } else if (id == translate) {
@@ -4854,6 +4951,14 @@ public class ChatActivity extends BaseFragment implements
             }
             translateItem = headerItem.lazilyAddSubItem(translate, R.drawable.msg_translate, LocaleController.getString(R.string.TranslateMessage));
             updateTranslateItemVisibility();
+            if (supportsBygramFlame()) {
+                headerItem.lazilyAddSubItem(RESTORE_FLAME, R.drawable.msg_mini_fireon, getString(R.string.BygramFlameRestore));
+                headerItem.hideSubItem(RESTORE_FLAME);
+                headerItem.lazilyAddSubItem(ENABLE_FLAME, R.drawable.msg_mini_fireon, getString(R.string.BygramFlameEnable));
+                headerItem.hideSubItem(ENABLE_FLAME);
+                headerItem.lazilyAddSubItem(FLAME_STATS, R.drawable.msg_mini_fireon, getString(R.string.BygramFlameStats));
+                headerItem.hideSubItem(FLAME_STATS);
+            }
             headerItem.lazilyAddSubItem(to_beginning, R.drawable.msg_to_beginning, LocaleController.getString(R.string.ToBeginning));
 
             boolean allowShowPinned = currentChat != null ? (ChatObject.canUserDoAction(currentChat, ChatObject.ACTION_PIN) || ChatObject.isChannel(currentChat)) : (currentEncryptedChat == null ? (currentUser != null) : false);
@@ -25864,6 +25969,31 @@ public class ChatActivity extends BaseFragment implements
                     }
                 }
             }
+        } else if (id == NotificationCenter.bygramMessagesDeleted) {
+            long did = (long) args[0];
+            if (did != 0 && did != dialog_id && did != mergeDialogId) {
+                return;
+            }
+            ArrayList<Integer> ids = (ArrayList<Integer>) args[1];
+            boolean changed = false;
+            for (int loadIndex = 0; loadIndex < messagesDict.length; loadIndex++) {
+                for (int messageId : ids) {
+                    MessageObject messageObject = messagesDict[loadIndex].get(messageId);
+                    if (messageObject != null && args.length > 3 && messageId == (int) args[2]) {
+                        messageObject.messageOwner.bygramChatDeletedAt = (int) args[3];
+                        messageObject.forceUpdate = true;
+                        changed = true;
+                    }
+                    if (messageObject != null && !messageObject.isBygramDeleted()) {
+                        messageObject.messageOwner.bygramDeleted = true;
+                        getMessagesStorage().updateMessageCustomParams(messageObject.getDialogId(), messageObject.messageOwner);
+                        changed = true;
+                    }
+                }
+            }
+            if (changed) {
+                updateVisibleRows();
+            }
         } else if (id == NotificationCenter.replaceMessagesObjects) {
             long did = (long) args[0];
             final ArrayList<MessageObject> messageObjects = (ArrayList<MessageObject>) args[1];
@@ -27540,7 +27670,7 @@ public class ChatActivity extends BaseFragment implements
     private Pattern sponsoredUrlPattern;
     private MessageObject botSponsoredMessage;
     private void addSponsoredMessages(boolean animated) {
-        if (sponsoredMessagesAdded || chatMode != 0 || !ChatObject.isChannel(currentChat) && !UserObject.isBot(currentUser) || !forwardEndReached[0] || getUserConfig().isPremium() && getMessagesController().isSponsoredDisabled() || isReport()) {
+        if (sponsoredMessagesAdded || chatMode != 0 || !ChatObject.isChannel(currentChat) && !UserObject.isBot(currentUser) || !forwardEndReached[0] || getMessagesController().isSponsoredDisabled() || isReport()) {
             return;
         }
         MessagesController.SponsoredMessagesInfo res = getMessagesController().getSponsoredMessages(dialog_id);
@@ -32456,10 +32586,93 @@ public class ChatActivity extends BaseFragment implements
         return bulletinDelegate != null ? bulletinDelegate.getBottomOffset(0) : 0;
     }
 
+    private boolean supportsBygramFlame() {
+        return chatMode == MODE_DEFAULT && !isReport() && !isThreadChat()
+                && !inPreviewMode && !isInPreviewMode() && !isInsideContainer && currentEncryptedChat == null
+                && BygramFlame.supportsPeer(currentUser) && dialog_id == currentUser.id;
+    }
+
+    private void updateBygramFlame(int days, int activeDay, int lostDays, int restoresLeft, boolean needsConfirmation) {
+        bygramFlameDays = days;
+        bygramFlameLostDays = lostDays;
+        bygramFlameRestoresLeft = restoresLeft;
+        if (!supportsBygramFlame()) return;
+        if (avatarContainer != null) avatarContainer.setBygramFlame(days, activeDay != 0);
+        if (!isPaused && fragmentView instanceof FrameLayout && bygramFlame != null
+                && (Build.VERSION.SDK_INT < 26 || ValueAnimator.areAnimatorsEnabled())
+                && bygramFlame.takeMilestone(days, activeDay)) {
+            if (bygramFlameEffect != null) bygramFlameEffect.stop();
+            bygramFlameEffect = new org.telegram.ui.Components.BygramFlameEffect((FrameLayout) fragmentView, days);
+        }
+        if (headerItem != null) {
+            headerItem.setSubItemShown(FLAME_STATS, days > 0);
+            headerItem.setSubItemShown(RESTORE_FLAME, lostDays > 0 && restoresLeft > 0);
+            headerItem.setSubItemShown(ENABLE_FLAME, needsConfirmation);
+        }
+    }
+
+    private void confirmBygramFlameAccount() {
+        if (bygramFlame == null || getParentActivity() == null) return;
+        showDialog(new AlertDialog.Builder(getParentActivity(), themeDelegate)
+                .setTitle(getString(R.string.BygramFlameEnable))
+                .setMessage(getString(R.string.BygramFlameEnableMessage))
+                .setNegativeButton(getString(R.string.Cancel), null)
+                .setPositiveButton(getString(R.string.BygramFlameOpenLogin), (dialog, which) ->
+                        bygramFlame.requestAccountLogin(url -> {
+                            if (getParentActivity() == null) return;
+                            if (!url.isEmpty()) {
+                                BygramAccountService.openAccountLogin(getParentActivity(), url);
+                            } else {
+                                showDialog(new AlertDialog.Builder(getParentActivity(), themeDelegate)
+                                        .setMessage(getString(R.string.BygramFlameEnableError))
+                                        .setPositiveButton(getString(R.string.OK), null).create());
+                            }
+                        })).create());
+    }
+
+    private void confirmBygramFlameRestore() {
+        if (bygramFlame == null || bygramFlameLostDays <= 0 || bygramFlameRestoresLeft <= 0 || getParentActivity() == null) return;
+        showDialog(new AlertDialog.Builder(getParentActivity(), themeDelegate)
+                .setTitle(getString(R.string.BygramFlameRestore))
+                .setMessage(LocaleController.formatString(R.string.BygramFlameRestoreMessage, bygramFlameLostDays, bygramFlameRestoresLeft))
+                .setNegativeButton(getString(R.string.Cancel), null)
+                .setPositiveButton(getString(R.string.BygramFlameRestoreAction), (dialog, which) ->
+                        bygramFlame.restore(restored -> {
+                            if (!restored && getParentActivity() != null) {
+                                showDialog(new AlertDialog.Builder(getParentActivity(), themeDelegate)
+                                        .setMessage(getString(R.string.BygramFlameRestoreError))
+                                        .setPositiveButton(getString(R.string.OK), null).create());
+                            }
+                        })).create());
+    }
+
+    private void pauseBygramActivity() {
+        AndroidUtilities.cancelRunOnUIThread(bygramActivityRunnable);
+        if (bygramGroupActivity != null) {
+            bygramGroupActivity.stop();
+            bygramGroupActivity = null;
+        }
+    }
+
+    private void pauseBygramFlame() {
+        if (bygramFlame != null) bygramFlame.pause();
+        if (bygramFlameEffect != null) {
+            bygramFlameEffect.stop();
+            bygramFlameEffect = null;
+        }
+    }
+
     @Override
     public void onResume() {
         super.onResume();
         ChatScreenshotExportBridge.onChatResumed(this);
+        if (supportsBygramFlame()) {
+            if (bygramFlame == null) bygramFlame = new BygramFlame(currentAccount, dialog_id, this::updateBygramFlame);
+            bygramFlame.resume();
+        }
+        if (chatMode == MODE_DEFAULT && !isInsideContainer && !isInPreviewMode()) {
+            BygramActivityController.setCurrentActivity(currentAccount, BygramActivitySettings.ACTIVITY_CHAT, dialog_id, currentUser, currentChat);
+        }
         if (quickAttachOnResume != null) {
             Runnable action = quickAttachOnResume;
             quickAttachOnResume = null;
@@ -32561,6 +32774,14 @@ public class ChatActivity extends BaseFragment implements
         }
 
         paused = false;
+        if (chatMode == MODE_DEFAULT && currentUser != null && !currentUser.self && !currentUser.bot && !isInPreviewMode()) {
+            if (bygramGroupActivity != null) bygramGroupActivity.stop();
+            bygramGroupActivity = new BygramGroupActivity(currentAccount, currentUser.id, classGuid, () -> {
+                if (!paused && avatarContainer != null) avatarContainer.updateSubtitle();
+            });
+            AndroidUtilities.cancelRunOnUIThread(bygramActivityRunnable);
+            bygramActivityRunnable.run();
+        }
         pausedOnLastMessage = false;
         if (isFeedSearch() && feedIntegration != null) {
             feedIntegration.onHostResumed();
@@ -32688,6 +32909,9 @@ public class ChatActivity extends BaseFragment implements
         if (quickTilesMenu != null) quickTilesMenu.dismiss(false);
         super.onPause();
         ChatScreenshotExportBridge.onChatPaused(this);
+        pauseBygramFlame();
+        pauseBygramActivity();
+        BygramActivityController.clearCurrentActivity(currentAccount, BygramActivitySettings.ACTIVITY_CHAT, dialog_id);
         scrolling = false;
         if (scrimPopupWindow != null) {
             scrimPopupWindow.setPauseNotifications(false);
@@ -36356,6 +36580,100 @@ public class ChatActivity extends BaseFragment implements
                         }
                     }
                 });
+                break;
+            }
+            case OPTION_BYGRAM_EDIT_HISTORY: {
+                ArrayList<MessageObject> history = BygramSpyMode.getEditHistory(currentAccount, selectedObject.messageOwner);
+                AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), themeDelegate);
+                builder.setTitle(LocaleController.getString(R.string.BygramEditHistory));
+                if (history.isEmpty()) {
+                    builder.setMessage(LocaleController.getString(R.string.BygramNoEditHistory));
+                } else {
+                    android.widget.ScrollView scroll = new android.widget.ScrollView(getContext());
+                    LinearLayout versions = new LinearLayout(getContext());
+                    versions.setOrientation(LinearLayout.VERTICAL);
+                    versions.setBackgroundColor(getThemedColor(Theme.key_chat_wallpaper));
+                    scroll.addView(versions);
+                    ChatMessageCellDelegate historyDelegate = new ChatMessageCellDelegate() {
+                        @Override
+                        public boolean canPerformActions() {
+                            return true;
+                        }
+
+                        @Override
+                        public void didPressInstantButton(ChatMessageCell cell, int type) {
+                            TLRPC.MessageMedia media = cell.getMessageObject().messageOwner.media;
+                            if (type == 0 && media != null && media.webpage != null && media.webpage.cached_page != null) {
+                                createArticleViewer(false).openSnapshot(cell.getMessageObject());
+                            }
+                        }
+
+                        @Override
+                        public void didPressWebPage(ChatMessageCell cell, TLRPC.WebPage webpage, String url, boolean safe) {
+                            if (webpage != null && webpage.cached_page != null) {
+                                createArticleViewer(false).openSnapshot(cell.getMessageObject());
+                            } else {
+                                getChatMessageCellDelegate().didPressWebPage(cell, webpage, url, safe);
+                            }
+                        }
+
+                        @Override
+                        public void didPressUrl(ChatMessageCell cell, CharacterStyle url, boolean longPress) {
+                            getChatMessageCellDelegate().didPressUrl(cell, url, longPress);
+                        }
+
+                        @Override
+                        public void didPressImage(ChatMessageCell cell, float x, float y, boolean fullPreview) {
+                            MessageObject version = cell.getMessageObject();
+                            if (fullPreview && version.messageOwner.media != null && version.messageOwner.media.webpage != null) {
+                                TLRPC.WebPage page = version.messageOwner.media.webpage;
+                                didPressWebPage(cell, page, page.url, version.messageOwner.media.safe);
+                            } else if (version.type == MessageObject.TYPE_FILE) {
+                                AndroidUtilities.openDocument(version, getParentActivity(), ChatActivity.this);
+                            } else {
+                                ArrayList<MessageObject> photos = new ArrayList<>();
+                                photos.add(version);
+                                PhotoViewer.getInstance().setParentActivity(ChatActivity.this, themeDelegate);
+                                PhotoViewer.getInstance().openPhoto(photos, 0, 0, 0, 0, new PhotoViewer.EmptyPhotoViewerProvider());
+                            }
+                        }
+
+                        @Override
+                        public boolean needPlayMessage(ChatMessageCell cell, MessageObject message, boolean muted) {
+                            return MediaController.getInstance().playMessage(message, muted);
+                        }
+                    };
+                    java.text.SimpleDateFormat formatter = new java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault());
+                    for (MessageObject version : history) {
+                        TextView date = new TextView(getContext());
+                        date.setText(formatter.format(new java.util.Date(version.messageOwner.date * 1000L)));
+                        date.setTextColor(getThemedColor(Theme.key_dialogTextGray));
+                        date.setGravity(Gravity.CENTER);
+                        versions.addView(date, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 4));
+                        ChatMessageCell cell = new ChatMessageCell(getContext(), currentAccount, false, sharedResources, themeDelegate) {
+                            @Override
+                            public int getParentWidth() {
+                                return parentWidth > 0 ? parentWidth : super.getParentWidth();
+                            }
+
+                            @Override
+                            protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                                int width = View.MeasureSpec.getSize(widthMeasureSpec);
+                                if (parentWidth != width) {
+                                    setParentViewSize(width, AndroidUtilities.displaySize.y);
+                                    forceResetMessageObject();
+                                }
+                                super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+                            }
+                        };
+                        cell.setDelegate(historyDelegate);
+                        cell.setMessageObject(version, null, false, false, false, false);
+                        versions.addView(cell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+                    }
+                    builder.setView(scroll);
+                }
+                builder.setPositiveButton(LocaleController.getString(R.string.OK), null);
+                showDialog(builder.create());
                 break;
             }
             case OPTION_HISTORY: {
@@ -50208,6 +50526,11 @@ public class ChatActivity extends BaseFragment implements
             items.add(getString(R.string.WelcomeMessageRevert));
             options.add(OPTION_WELCOME_REVERT);
             icons.add(R.drawable.outline_revert_24);
+        }
+        if (BygramSpyMode.hasEditHistory(currentAccount, message.getDialogId(), message.getId())) {
+            options.add(OPTION_BYGRAM_EDIT_HISTORY);
+            items.add(getString(R.string.BygramEditHistory));
+            icons.add(R.drawable.msg_edit);
         }
     }
 

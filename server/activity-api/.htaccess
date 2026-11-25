@@ -1,0 +1,25 @@
+Options -Indexes
+<Files "plugin-catalog.php">
+    Require all denied
+</Files>
+<Files "chat-flames.php">
+    Require all denied
+</Files>
+<Files "admin-flames.php">
+    Require all denied
+</Files>
+<FilesMatch "^(client-devices|release-channels|account-sessions|plugin-store|plugin-store-front|plugin-store-providers|plugin-store-author-bots|plugin-store-sync|plugin-store-operations|plugin-store-wallet)\.php$">
+    Require all denied
+</FilesMatch>
+<Files "plugin-self-test.php">
+    Require all denied
+</Files>
+<Files "sodium-compat.phar">
+    Require all denied
+</Files>
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+<FilesMatch "^(config(\.example)?\.php|bootstrap\.php|cron\.php|schema\.sql|self-test\.php|profile-background-validation\.php|badges\.json)$">
+    Require all denied
+</FilesMatch>

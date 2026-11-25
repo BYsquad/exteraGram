@@ -340,12 +340,33 @@ public class ConnectionsManager extends BaseController {
         return pushString;
     }
 
+    private static final String FCM_UNAVAILABLE = "bygramFcmUnavailable";
+
     public boolean isPushConnectionEnabled() {
         SharedPreferences preferences = MessagesController.getGlobalNotificationsSettings();
         if (preferences.contains("pushConnection")) {
             return preferences.getBoolean("pushConnection", true);
-        } else {
-            return MessagesController.getMainSettings(UserConfig.selectedAccount).getBoolean("backgroundConnection", false);
+        }
+        return preferences.getBoolean(FCM_UNAVAILABLE, false)
+                || MessagesController.getMainSettings(UserConfig.selectedAccount).getBoolean("backgroundConnection", false);
+    }
+
+    public static void setFcmUnavailable(boolean unavailable) {
+        SharedPreferences preferences = MessagesController.getGlobalNotificationsSettings();
+        if (preferences.getBoolean(FCM_UNAVAILABLE, false) != unavailable) {
+            preferences.edit().putBoolean(FCM_UNAVAILABLE, unavailable).apply();
+            if (!preferences.contains("pushConnection")) {
+                refreshPushConnections();
+            }
+        }
+    }
+
+    public static void refreshPushConnections() {
+        for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
+            if (UserConfig.getInstance(account).isClientActivated()) {
+                ConnectionsManager connection = getInstance(account);
+                connection.setPushConnectionEnabled(connection.isPushConnectionEnabled());
+            }
         }
     }
 

@@ -22,8 +22,8 @@
     <permission android:name="${applicationId}.permission.MAPS_RECEIVE" android:protectionLevel="signature"/>
 
     <application
-        android:icon="@mipmap/ic_launcher_beta"
-        android:roundIcon="@mipmap/ic_launcher_beta"
+        android:icon="@drawable/bygram_logo_new"
+        android:roundIcon="@drawable/bygram_logo_new"
         android:label="@string/exteraAppName"
         android:theme="@style/Theme.TMessages.Start"
         android:name=".ApplicationLoader"

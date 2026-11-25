@@ -754,6 +754,10 @@ public class MessageObject {
         }
     }
 
+    public boolean isBygramDeleted() {
+        return messageOwner != null && messageOwner.bygramDeleted;
+    }
+
     public boolean isPremiumSticker() {
         if (getMedia(messageOwner) != null && getMedia(messageOwner).nopremium) {
             return false;

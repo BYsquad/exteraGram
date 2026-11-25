@@ -1007,6 +1007,26 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         return botVerificationDrawable;
     }
 
+    private CharSequence bygramPlainTitle;
+    private int bygramFlameDays;
+    private boolean bygramFlameActive;
+
+    public void setBygramFlame(int days, boolean active) {
+        if (bygramFlameDays == days && bygramFlameActive == active) return;
+        bygramFlameDays = days;
+        bygramFlameActive = active;
+        applyBygramTitle();
+    }
+
+    private void applyBygramTitle() {
+        if (bygramFlameDays <= 0 || TextUtils.isEmpty(bygramPlainTitle)) {
+            titleTextView.setText(bygramPlainTitle);
+        } else {
+            titleTextView.setText(new android.text.SpannableStringBuilder(bygramPlainTitle).append('\u00a0')
+                    .append(new BygramFlameBadge(getContext(), bygramFlameDays, bygramFlameActive).text()));
+        }
+    }
+
     public void setTitle(CharSequence value) {
         setTitle(value, false, false, false, false, null, null, false);
     }
@@ -1015,7 +1035,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         if (value != null) {
             value = Emoji.replaceEmoji(value, titleTextView.getPaint().getFontMetricsInt(), false);
         }
-        titleTextView.setText(value);
+        bygramPlainTitle = value;
+        applyBygramTitle();
 
         if (titleTextView.getRightDrawable() instanceof AnimatedEmojiDrawable.WrapSizeDrawable wrapSizeDrawable) {
             Drawable innerDrawable = wrapSizeDrawable.getDrawable();
@@ -1415,6 +1436,14 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             useOnlineColor = true;
             setTypingAnimation(true);
         }
+        if (user != null && !user.self && parentFragment.getChatMode() == ChatActivity.MODE_DEFAULT
+                && TextUtils.isEmpty(printString)) {
+            String activity = parentFragment.getBygramActivitySubtitle();
+            if (!activity.isEmpty()) {
+                newSubtitle = activity;
+                useOnlineColor = true;
+            }
+        }
         lastSubtitleColorKey = useOnlineColor ? Theme.key_chat_status : Theme.key_actionBarDefaultSubtitle;
         if (lastSubtitle == null) {
             if (subtitleTextView != null) {
@@ -1792,7 +1821,11 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
     public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
         super.onInitializeAccessibilityNodeInfo(info);
         StringBuilder sb = new StringBuilder();
-        sb.append(titleTextView.getText());
+        sb.append(bygramPlainTitle);
+        if (bygramFlameDays > 0) {
+            sb.append(", ").append(LocaleController.formatString(
+                    bygramFlameActive ? R.string.BygramFlameActiveDays : R.string.BygramFlamePendingDays, bygramFlameDays));
+        }
         if (rightDrawableContentDescription != null) {
             sb.append(", ");
             sb.append(rightDrawableContentDescription);

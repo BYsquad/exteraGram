@@ -9,8 +9,8 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -1308,14 +1308,28 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
             if (bitmap != null) {
                 return bitmap;
             }
-            bitmap = BitmapFactory.decodeResource(context.getResources(), resId);
-            Bitmap shadowBitmap = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
+            final Drawable drawable;
+            try {
+                drawable = ContextCompat.getDrawable(context, resId);
+            } catch (Resources.NotFoundException e) {
+                FileLog.e(e);
+                return null;
+            }
+            if (drawable == null || drawable.getIntrinsicWidth() <= 0 || drawable.getIntrinsicHeight() <= 0) {
+                return null;
+            }
+            final int width = drawable.getIntrinsicWidth();
+            final int height = drawable.getIntrinsicHeight();
+            bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            drawable.setBounds(0, 0, width, height);
+            drawable.draw(new Canvas(bitmap));
+            Bitmap shadowBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(shadowBitmap);
             Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
             paint.setColorFilter(new PorterDuffColorFilter(0xFF606060, PorterDuff.Mode.SRC_IN));
             canvas.drawBitmap(bitmap, 0, 0, paint);
             Utilities.stackBlurBitmap(shadowBitmap, dp(1));
-            Bitmap resultBitmap = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
+            Bitmap resultBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
             canvas = new Canvas(resultBitmap);
             canvas.drawBitmap(shadowBitmap, 0, 0, paint);
             canvas.drawBitmap(shadowBitmap, 0, 0, paint);

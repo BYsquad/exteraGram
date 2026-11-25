@@ -35,7 +35,8 @@ public class MessageCustomParamsHelper {
             message.translatedText == null &&
             message.translatedRichMessage == null &&
             message.errorAllowedPriceStars == 0 &&
-            message.errorNewPriceStars == 0
+            message.errorNewPriceStars == 0 &&
+            !message.bygramDeleted && message.bygramChatDeletedAt == 0
         );
     }
 
@@ -59,6 +60,8 @@ public class MessageCustomParamsHelper {
         toMessage.summaryText = fromMessage.summaryText;
         toMessage.translatedSummaryText = fromMessage.translatedSummaryText;
         toMessage.translatedSummaryLanguage = fromMessage.translatedSummaryLanguage;
+        toMessage.bygramDeleted = fromMessage.bygramDeleted;
+        toMessage.bygramChatDeletedAt = fromMessage.bygramChatDeletedAt;
     }
 
 
@@ -120,7 +123,10 @@ public class MessageCustomParamsHelper {
             flags = setFlag(flags, FLAG_12, message.translatedSummaryLanguage != null);
 
             flags = setFlag(flags, FLAG_13, message.translatedRichMessage != null);
-            flags = setFlag(flags, FLAG_14, isCommentEncryptionPreparing(message));
+            // Bit 14 belongs to existing BYgram Spy data; keep wallet state on a separate bit.
+            flags = setFlag(flags, FLAG_14, message.bygramDeleted);
+            flags = setFlag(flags, FLAG_15, isCommentEncryptionPreparing(message));
+            flags = setFlag(flags, FLAG_16, message.bygramChatDeletedAt != 0);
         }
 
         @Override
@@ -173,6 +179,9 @@ public class MessageCustomParamsHelper {
             if (hasFlag(flags, FLAG_13)) {
                 message.translatedRichMessage.serializeToStream(stream);
             }
+            if (hasFlag(flags, FLAG_16)) {
+                stream.writeInt32(message.bygramChatDeletedAt);
+            }
         }
 
         @Override
@@ -181,7 +190,7 @@ public class MessageCustomParamsHelper {
             if (message.action instanceof TLRPC.TL_messageActionGramTransfer) {
                 final TLRPC.TL_messageActionGramTransfer action = (TLRPC.TL_messageActionGramTransfer) message.action;
                 // An update may carry ciphertext while storage still has the old local params.
-                action.comment_encrypted_preparing = !action.comment_encrypted && hasFlag(flags, FLAG_14);
+                action.comment_encrypted_preparing = !action.comment_encrypted && hasFlag(flags, FLAG_15);
             }
             if ((flags & 1) != 0) {
                 message.voiceTranscription = stream.readString(exception);
@@ -228,6 +237,8 @@ public class MessageCustomParamsHelper {
             if (hasFlag(flags, FLAG_13)) {
                 message.translatedRichMessage = TL_iv.RichMessage.TLdeserialize(stream, stream.readInt32(exception), exception);
             }
+            message.bygramDeleted = hasFlag(flags, FLAG_14);
+            message.bygramChatDeletedAt = hasFlag(flags, FLAG_16) ? stream.readInt32(exception) : 0;
         }
 
     }

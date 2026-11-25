@@ -3893,7 +3893,11 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                 waitingForCallback.remove(key);
                 finalKeys.remove(key);
             }), ConnectionsManager.RequestFlagFailOnServerErrors);
-            getMessagesController().markDialogAsRead(dialogId, msgId, msgId, 0, false, 0, 0, true, 0);
+            if (BygramGhostMode.shouldReadOnActions()) {
+                getMessagesController().markDialogAsReadByAction(dialogId, msgId);
+            } else {
+                getMessagesController().markDialogAsRead(dialogId, msgId, msgId, 0, false, 0, 0, true, 0);
+            }
         });
     }
 
@@ -4047,6 +4051,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             req.flags |= 2;
             req.big = true;
         }
+        getMessagesController().markDialogAsReadByAction(messageObject.getDialogId(), messageObject.getId());
         getConnectionsManager().sendRequest(req, (response, error) -> {
             if (response != null) {
                 getMessagesController().processUpdates((TLRPC.Updates) response, false);
@@ -4522,6 +4527,12 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         }
         if (peer == 0) {
             return;
+        }
+        if (scheduleDate == 0 && retryMessageObject == null && BygramGhostMode.shouldReadOnActions()) {
+            TLRPC.Dialog dialog = getMessagesController().dialogs_dict.get(peer);
+            if (dialog != null) {
+                getMessagesController().markDialogAsReadByAction(peer, dialog.top_message);
+            }
         }
         if (richMessage != null && DialogObject.isEncryptedDialog(peer)) {
             return;

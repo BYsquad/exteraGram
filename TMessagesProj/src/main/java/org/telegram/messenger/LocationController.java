@@ -928,6 +928,7 @@ public class LocationController extends BaseController implements NotificationCe
     }
 
     public void markLiveLoactionsAsRead(long dialogId) {
+        boolean blockReadReceipt = BygramGhostMode.shouldBlockReadReceipts();
         if (DialogObject.isEncryptedDialog(dialogId)) {
             return;
         }
@@ -941,6 +942,13 @@ public class LocationController extends BaseController implements NotificationCe
             return;
         }
         lastReadLocationTime.put(dialogId, currentDate);
+        if (blockReadReceipt) {
+            ArrayList<Integer> ids = new ArrayList<>();
+            for (TLRPC.Message message : messages) ids.add(message.id);
+            getMessagesStorage().markMessagesContentAsRead(dialogId, ids, 0, 0);
+            getNotificationCenter().postNotificationName(NotificationCenter.messagesReadContent, dialogId, ids);
+            return;
+        }
         TLObject request;
         if (DialogObject.isChatDialog(dialogId) && ChatObject.isChannel(-dialogId, currentAccount)) {
             TLRPC.TL_channels_readMessageContents req = new TLRPC.TL_channels_readMessageContents();

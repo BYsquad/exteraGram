@@ -5594,6 +5594,10 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         return open(messageObject, null, null, null, null);
     }
 
+    public boolean openSnapshot(MessageObject messageObject) {
+        return open(messageObject, null, null, null, null, false);
+    }
+
     public boolean open(MessageObject messageObject, TLRPC.WebPage webpage) {
         return open(messageObject, webpage, null, null, null);
     }
@@ -5611,6 +5615,11 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     }
 
     private boolean open(final MessageObject messageObject, TLRPC.WebPage webpage, String url, String webUrl, Browser.Progress progress) {
+        return open(messageObject, webpage, url, webUrl, progress, true);
+    }
+
+    private boolean open(final MessageObject messageObject, TLRPC.WebPage webpage, String url, String webUrl,
+                         Browser.Progress progress, boolean refreshWebpage) {
         if (parentActivity == null || sheet == null && isVisible && !collapsed) {
             return false;
         }
@@ -5692,7 +5701,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
         if (webpage != null) {
             scrolledToAnchor = addPageToStack(webpage, anchor, openingAbove ? 1 : 0);
-            if (!localWebpage) {
+            if (!localWebpage && refreshWebpage) {
                 final String anchorFinal = !scrolledToAnchor && anchor != null ? anchor : null;
                 final TLRPC.TL_messages_getWebPage req = new TLRPC.TL_messages_getWebPage();
                 req.url = webpage.url;

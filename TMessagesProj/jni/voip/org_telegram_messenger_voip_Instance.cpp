@@ -12,10 +12,13 @@
 #include <tgnet/FileLog.h>
 #include <tgcalls/tgcalls/group/GroupInstanceCustomImpl.h>
 
+#include <cinttypes>
 #include <memory>
+#include <string>
 #include <utility>
 #include <map>
 #include <mutex>
+#include <vector>
 
 #include "pc/video_track.h"
 #include "InstanceImpl.h"
@@ -404,7 +407,7 @@ DataSaving parseDataSaving(JNIEnv *env, jint dataSaving) {
             throwNewJavaIllegalArgumentException(env, "DATA_SAVING_ROAMING is not supported");
             return DataSaving::Never;
         default:
-            throwNewJavaIllegalArgumentException(env, "Unknown data saving constant: " + dataSaving);
+            throwNewJavaIllegalArgumentException(env, ("Unknown data saving constant: " + std::to_string(dataSaving)).c_str());
             return DataSaving::Never;
     }
 }
@@ -549,22 +552,24 @@ JNIEXPORT jlong JNICALL Java_org_telegram_messenger_voip_NativeInstance_makeGrou
             },
             .audioLevelsUpdated = [platformContext](GroupLevelsUpdate const &update) {
                 tgvoip::jni::DoWithJNI([platformContext, update](JNIEnv *env) {
-                    unsigned int size = update.updates.size();
+                    const size_t size = update.updates.size();
                     jintArray intArray = env->NewIntArray(size);
                     jfloatArray floatArray = env->NewFloatArray(size);
                     jbooleanArray boolArray = env->NewBooleanArray(size);
 
-                    jint intFill[size];
-                    jfloat floatFill[size];
-                    jboolean boolFill[size];
-                    for (int a = 0; a < size; a++) {
-                        intFill[a] = update.updates[a].ssrc;
-                        floatFill[a] = update.updates[a].value.isMuted ? 0 : update.updates[a].value.level;
-                        boolFill[a] = !update.updates[a].value.isMuted && update.updates[a].value.voice;
+                    if (size != 0) {
+                        std::vector<jint> intFill(size);
+                        std::vector<jfloat> floatFill(size);
+                        std::vector<jboolean> boolFill(size);
+                        for (size_t a = 0; a < size; a++) {
+                            intFill[a] = update.updates[a].ssrc;
+                            floatFill[a] = update.updates[a].value.isMuted ? 0 : update.updates[a].value.level;
+                            boolFill[a] = !update.updates[a].value.isMuted && update.updates[a].value.voice;
+                        }
+                        env->SetIntArrayRegion(intArray, 0, size, intFill.data());
+                        env->SetFloatArrayRegion(floatArray, 0, size, floatFill.data());
+                        env->SetBooleanArrayRegion(boolArray, 0, size, boolFill.data());
                     }
-                    env->SetIntArrayRegion(intArray, 0, size, intFill);
-                    env->SetFloatArrayRegion(floatArray, 0, size, floatFill);
-                    env->SetBooleanArrayRegion(boolArray, 0, size, boolFill);
 
                     jobject globalRef = ((AndroidContext *) platformContext.get())->getJavaGroupInstance();
                     env->CallVoidMethod(globalRef, env->GetMethodID(NativeInstanceClass, "onAudioLevelsUpdated", "([I[F[Z)V"), intArray, floatArray, boolArray);
@@ -602,14 +607,13 @@ JNIEXPORT jlong JNICALL Java_org_telegram_messenger_voip_NativeInstance_makeGrou
             std::shared_ptr<RequestMediaChannelDescriptionTaskJava> task = std::make_shared<RequestMediaChannelDescriptionTaskJava>(platformContext, callback);
             ((AndroidContext *) platformContext.get())->descriptionTasks.push_back(task);
             tgvoip::jni::DoWithJNI([platformContext, ssrcs, task](JNIEnv *env) {
-                unsigned int size = ssrcs.size();
+                const size_t size = ssrcs.size();
                 jintArray intArray = env->NewIntArray(size);
 
-                jint intFill[size];
-                for (int a = 0; a < size; a++) {
-                    intFill[a] = ssrcs[a];
+                if (size != 0) {
+                    std::vector<jint> intFill(ssrcs.begin(), ssrcs.end());
+                    env->SetIntArrayRegion(intArray, 0, size, intFill.data());
                 }
-                env->SetIntArrayRegion(intArray, 0, size, intFill);
 
                 jobject globalRef = ((AndroidContext *) platformContext.get())->getJavaGroupInstance();
                 env->CallVoidMethod(globalRef, env->GetMethodID(NativeInstanceClass, "onParticipantDescriptionsRequired", "(J[I)V"), (jlong) task.get(), intArray);
@@ -1383,7 +1387,7 @@ Java_org_telegram_messenger_voip_NativeInstance_setConferenceCallId(JNIEnv *env,
         DEBUG_D("setConferenceCallId failed, instance doesn't contain groupNativeInstance");
         return;
     }
-    DEBUG_D("setConferenceCallId %d", call_id);
+    DEBUG_D("setConferenceCallId %" PRId64, static_cast<int64_t>(call_id));
     *instance->conferenceCallId = (long) call_id;
 }
 

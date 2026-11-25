@@ -44,3 +44,7 @@ API_KEYS*
 **.project
 **/.settings
 **.classpath
+/TMessagesProj/config/release.keystore
+
+/server/site/node_modules/
+/server/site/dist/

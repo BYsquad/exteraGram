@@ -114,14 +114,16 @@ public class SecretChatHelper extends BaseController {
     protected void processPendingEncMessages() {
         if (!pendingEncMessagesToDelete.isEmpty()) {
             ArrayList<Long> pendingEncMessagesToDeleteCopy = new ArrayList<>(pendingEncMessagesToDelete);
-            AndroidUtilities.runOnUIThread(() -> {
-                for (int a = 0; a < pendingEncMessagesToDeleteCopy.size(); a++) {
-                    MessageObject messageObject = getMessagesController().dialogMessagesByRandomIds.get(pendingEncMessagesToDeleteCopy.get(a));
-                    if (messageObject != null) {
-                        messageObject.deleted = true;
+            if (!BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)) {
+                AndroidUtilities.runOnUIThread(() -> {
+                    for (int a = 0; a < pendingEncMessagesToDeleteCopy.size(); a++) {
+                        MessageObject messageObject = getMessagesController().dialogMessagesByRandomIds.get(pendingEncMessagesToDeleteCopy.get(a));
+                        if (messageObject != null) {
+                            messageObject.deleted = true;
+                        }
                     }
-                }
-            });
+                });
+            }
             ArrayList<Long> arr = new ArrayList<>(pendingEncMessagesToDelete);
             getMessagesStorage().markMessagesAsDeletedByRandoms(arr);
             pendingEncMessagesToDelete.clear();
@@ -163,6 +165,9 @@ public class SecretChatHelper extends BaseController {
     }
 
     public void sendMessagesReadMessage(TLRPC.EncryptedChat encryptedChat, ArrayList<Long> random_ids, TLRPC.Message resendMessage) {
+        if (BygramGhostMode.shouldBlockReadReceipts()) {
+            return;
+        }
         if (!(encryptedChat instanceof TLRPC.TL_encryptedChat)) {
             return;
         }
@@ -247,7 +252,8 @@ public class SecretChatHelper extends BaseController {
                 getNotificationCenter().postNotificationName(NotificationCenter.encryptedChatUpdated, newChat);
             });
         }
-        if (newChat instanceof TLRPC.TL_encryptedChatDiscarded && newChat.history_deleted) {
+        if (newChat instanceof TLRPC.TL_encryptedChatDiscarded && newChat.history_deleted
+                && !BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)) {
             AndroidUtilities.runOnUIThread(() -> getMessagesController().deleteDialog(dialog_id, 0));
         }
     }
@@ -1139,6 +1145,10 @@ public class SecretChatHelper extends BaseController {
                     return newMessage;
                 } else if (serviceMessage.action instanceof TLRPC.TL_decryptedMessageActionFlushHistory) {
                     long did = DialogObject.makeEncryptedDialogId(chat.id);
+                    if (BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)) {
+                        getMessagesStorage().markDialogMessagesAsBygramDeleted(did);
+                        return null;
+                    }
                     AndroidUtilities.runOnUIThread(() -> {
                         TLRPC.Dialog dialog = getMessagesController().dialogs_dict.get(did);
                         if (dialog != null) {

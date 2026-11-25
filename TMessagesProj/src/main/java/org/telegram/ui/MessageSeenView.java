@@ -28,6 +28,8 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.ContactsController;
 import org.telegram.messenger.ImageLocation;
+import org.telegram.messenger.BygramSpyMode;
+import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
@@ -121,6 +123,9 @@ public class MessageSeenView extends FrameLayout implements Theme.Colorable {
                     Object object = vector.objects.get(i);
                     if (object instanceof TLRPC.TL_readParticipantDate) {
                         int date = ((TLRPC.TL_readParticipantDate) object).date;
+                        if (date <= 0 && DialogObject.isUserDialog(messageObject.getDialogId())) {
+                            date = BygramSpyMode.getReadDate(currentAccount, messageObject.getDialogId(), messageObject.getId());
+                        }
                         Long peerId = ((TLRPC.TL_readParticipantDate) object).user_id;
                         if (finalFromId == peerId) {
                             continue;
@@ -139,7 +144,9 @@ public class MessageSeenView extends FrameLayout implements Theme.Colorable {
                         }
                         if (peerId > 0) {
                             TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(peerId);
-                            allPeers.add(new Pair<>(peerId, 0));
+                            int date = DialogObject.isUserDialog(messageObject.getDialogId())
+                                    ? BygramSpyMode.getReadDate(currentAccount, messageObject.getDialogId(), messageObject.getId()) : 0;
+                            allPeers.add(new Pair<>(peerId, date));
                             if (true || user == null) {
                                 unknownUsers.add(peerId);
                             } else {

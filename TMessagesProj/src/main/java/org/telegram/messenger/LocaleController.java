@@ -3241,8 +3241,18 @@ public class LocaleController {
                 }
                 return getString("Online", R.string.Online);
             }
+            int savedLastOnline = BygramSpyMode.getLastOnline(currentAccount, user.id);
+            if (savedLastOnline > 0) {
+                return formatString(R.string.BygramObservedOnline, formatDateOnline(savedLastOnline, madeShorter, relative));
+            }
         }
         if (user == null || user.status == null || user.status.expires == 0 || UserObject.isDeleted(user) || user instanceof TLRPC.TL_userEmpty) {
+            if (user != null) {
+                int savedLastOnline = BygramSpyMode.getLastOnline(currentAccount, user.id);
+                if (savedLastOnline > 0) {
+                    return formatDateOnline(savedLastOnline, madeShorter, relative);
+                }
+            }
             return getString("ALongTimeAgo", R.string.ALongTimeAgo);
         } else {
             int currentTime = ConnectionsManager.getInstance(currentAccount).getCurrentTime();

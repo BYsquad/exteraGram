@@ -12,7 +12,7 @@
 -->
 
 <resources>
-    <string name="exteraAppName" translatable="false">exteraGram</string>
+    <string name="exteraAppName" translatable="false">BYgram</string>
     <string name="Preferences">exteraGram Preferences</string>
 
     <!-- Main Menu -->
@@ -1460,4 +1460,90 @@
     <string name="MessageExportStickerToSavedMessages">Sticker sent to **Saved Messages**.</string>
     <string name="MessageExportStickerToUser">Sticker sent to **%1$s**.</string>
     <string name="MessageExportStickerToChats">Sticker sent to **%1$s**.</string>
+    <string name="BygramBasedOnExtera">Based on exteraGram</string>
+    <string name="BygramSourceCode">Source code</string>
+    <string name="BygramUpdateAvailable">A BYgram update is available</string>
+    <string name="BygramDownloadUpdate">Download</string>
+    <string name="BygramUpdateCurrent">You have the latest version</string>
+    <string name="BygramUpdateFailed">Unable to check for BYgram updates</string>
+    <string name="BygramLocalChatFolderInfo">This folder is stored on this device.</string>
+    <string name="BygramGhostMode">Ghost Mode</string>
+    <string name="BygramGhostMaster">Ghost Mode %1$d/5</string>
+    <string name="BygramNoReadMessages">Do not read messages</string>
+    <string name="BygramNoReadStories">Do not read stories</string>
+    <string name="BygramNoOnline">Do not show me online</string>
+    <string name="BygramNoTyping">Do not send typing status</string>
+    <string name="BygramGhostInfo">Ghost Mode applies only to this client. Other active Telegram sessions may still send online and read status.</string>
+    <string name="BygramReadOnActions">Read on actions</string>
+    <string name="BygramReadOnActionsInfo">Marks messages as read when you send a message, react, or press a bot button.</string>
+    <string name="BygramHiddenChats">Hidden chats</string>
+    <string name="BygramProtectedChats">Password protected chats</string>
+    <string name="BygramHiddenPin">Hidden chats code</string>
+    <string name="BygramSetPin">Set numeric code (at least 4 digits)</string>
+    <string name="BygramChangePin">Change numeric code</string>
+    <string name="BygramHiddenChatsInfo">Enter the code in chat search to open hidden chats.</string>
+    <string name="BygramProtectedChatsInfo">Each chat has its own password (at least 4 characters).</string>
+    <string name="BygramChatPassword">Chat password</string>
+    <string name="BygramPrivacyError">Incorrect or too short code or password</string>
+    <string name="BygramOpenToRead">Open to read</string>
+    <string name="BygramProtectedPreview">Hidden 🔒</string>
+    <string name="BygramMessageDeletedInChat">A message was deleted in the chat with %1$s</string>
+    <string name="BygramObservedOnline">Observed online: %1$s</string>
+    <string name="BygramSaveReadDate">Save read date</string>
+    <string name="BygramOnlyDeletedMessages">Only saved deleted messages</string>
+    <string name="BygramSaveEdits">Save edit history</string>
+    <string name="BygramSaveOwnDeleted">Keep my messages when I delete them</string>
+    <string name="BygramClearSpyData">Clear edit, read, and online history</string>
+    <string name="BygramSaveDeleted">Save deleted and disappearing messages</string>
+    <string name="BygramSpyMode">Spy</string>
+    <string name="BygramClearSpyDataConfirm">Delete local edit history, read dates, and observed online times?</string>
+    <string name="BygramSaveLastOnline">Save last online</string>
+    <string name="BygramSaveReadDateInfo">Stores one local read date for each message range read by the same update.</string>
+    <string name="BygramEditHistory">Edit history</string>
+    <string name="BygramSaveLastOnlineInfo">Keeps the latest observed online time for users with hidden last seen. The time is approximate.</string>
+    <string name="BygramNoEditHistory">No saved edits</string>
+    <string name="BygramNotifyDeleted">Notify when messages are deleted in private chats</string>
+    <string name="BygramActivityAvailableUsers">Contacts and chats</string>
+    <string name="BygramProfileViews">Profile views</string>
+    <string name="BygramActivitySelectedUsers">People with access</string>
+    <string name="BygramShareActivity">Activity sharing</string>
+    <string name="BygramActivityHideUsers">Hide</string>
+    <string name="BygramFlameStats">Flame statistics</string>
+    <string name="BygramFlameRestore">Restore Flame</string>
+    <string name="BygramShareActivityPrivacy">Activity is visible only to the people selected below and only in the categories allowed for each person. Current activity is stored on the BYgram server for up to 60 seconds.</string>
+    <string name="BygramFlameOpenLogin">Sign in with Telegram</string>
+    <string name="BygramProfileViewsEmpty">No one has viewed your profile yet</string>
+    <string name="BygramActivityProfilePermission">Can see whose profile I view</string>
+    <string name="BygramActivityDialogsPermission">Can see when I view the chat list</string>
+    <string name="BygramFlameEnable">Enable Flame</string>
+    <string name="BygramActivityChannel">Viewing the channel %1$s</string>
+    <string name="BygramFlameEnableError">Couldn’t open Telegram sign-in. Try again.</string>
+    <string name="BygramActivityProfile">Viewing %1$s’s profile</string>
+    <string name="BygramFlameStatsDays">Flame streak in days</string>
+    <string name="BygramActivityNobodySelected">Nobody can see your activity.</string>
+    <string name="BygramTypingOpenLogin">Sign in with Telegram</string>
+    <string name="BygramActivityBot">Chatting with the bot %1$s</string>
+    <string name="BygramFlameStatsMessages">Messages in chat history</string>
+    <string name="BygramFlameActiveDays">Flame, %1$d days</string>
+    <string name="BygramShareActivityMaster">Share my activity</string>
+    <string name="BygramFlamePendingDays">Flame, %1$d days. Both people need to send a message today.</string>
+    <string name="BygramActivityProfileShort">profiles</string>
+    <string name="BygramFlameEnableMessage">Sign in with Telegram to access your Flame streaks. Flame counts the days when you both send a message in this chat.</string>
+    <string name="BygramFlameRestoreMessage">Restore the %1$d-day streak? Restores left for this chat this month: %2$d.</string>
+    <string name="BygramProfileViewsVerify">Sign in with Telegram and return to BYgram to enable profile views.</string>
+    <string name="BygramActivityDialogs">Viewing the chat list</string>
+    <string name="BygramActivityGroup">In the group %1$s</string>
+    <string name="BygramProfileViewsRecent">Last 7 days</string>
+    <string name="BygramFlameRestoreAction">Restore</string>
+    <string name="BygramFlameRestoreError">Couldn’t restore Flame. Check your connection and try again if the option is still available.</string>
+    <string name="BygramShareActivityInfo">Selected BYgram users can view the activity you allow. Existing “who are they chatting with?” permissions are kept for chat activity only.</string>
+    <string name="BygramActivityChatPermission">Can see whom I chat with</string>
+    <string name="BygramActivityChatShort">chats</string>
+    <string name="BygramViewingChat">In a chat with %1$s</string>
+    <string name="BygramProfileViewsInfo">See who viewed your profile in the last 7 days. If others enable this setting, they can also see that you viewed their profile.</string>
+    <string name="BygramActivityAddUsers">Add people</string>
+    <string name="BygramActivityDialogsShort">chat list</string>
+    <string name="BygramProfileViewsNotification">%1$s viewed your profile</string>
+    <string name="BygramUserBadgeNotice">This user is a member of the BYgram team</string>
+    <string name="BygramResourceBadgeNotice">Official BYgram resource</string>
 </resources>

@@ -201,10 +201,7 @@ public class FilterCreateActivity extends BaseFragment {
         filter = dialogFilter;
         if (filter == null) {
             filter = new MessagesController.DialogFilter();
-            filter.id = 2;
-            while (getMessagesController().dialogFiltersById.get(filter.id) != null) {
-                filter.id++;
-            }
+            filter.id = getMessagesController().nextDialogFilterId();
             filter.name = "";
             filter.color = (int) (Math.random() * 8);
             creatingNew = true;
@@ -377,7 +374,9 @@ public class FilterCreateActivity extends BaseFragment {
             items.add(ItemInner.asShadow(LocaleController.getString(R.string.FolderTagColorInfo)));
         }
 
-        if (invites.isEmpty()) {
+        if (filter.isLocal()) {
+            items.add(ItemInner.asShadow(LocaleController.getString(R.string.BygramLocalChatFolderInfo)));
+        } else if (invites.isEmpty()) {
             items.add(ItemInner.asHeader(LocaleController.getString(R.string.FilterShareFolder), true));
             items.add(ItemInner.asButton(R.drawable.msg2_link2, LocaleController.getString(R.string.FilterShareFolderButton), false));
             items.add(ItemInner.asShadow(LocaleController.getString(R.string.FilterInviteLinksHintNew)));
@@ -686,6 +685,10 @@ public class FilterCreateActivity extends BaseFragment {
             return;
         }
         save(false, () -> {
+            if (filter.isLocal()) {
+                updateRows();
+                return;
+            }
             getMessagesController().updateFilterDialogs(filter);
 
             ArrayList<TLRPC.InputPeer> peers = new ArrayList<>();
@@ -822,6 +825,12 @@ public class FilterCreateActivity extends BaseFragment {
             builder.setMessage(LocaleController.getString(R.string.FilterDeleteAlert));
             builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
             builder.setPositiveButton(LocaleController.getString(R.string.Delete), (dialog, which) -> {
+                if (filter.isLocal()) {
+                    getMessagesController().removeFilter(filter);
+                    getMessagesStorage().deleteDialogFilter(filter);
+                    finishFragment();
+                    return;
+                }
                 AlertDialog progressDialog = null;
                 if (getParentActivity() != null) {
                     progressDialog = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
@@ -1094,13 +1103,8 @@ public class FilterCreateActivity extends BaseFragment {
             fragment.getMessagesController().onFilterUpdate(filter);
         }
         fragment.getMessagesStorage().saveDialogFilter(filter, atBegin, true);
-        if (atBegin) {
-            TLRPC.TL_messages_updateDialogFiltersOrder req = new TLRPC.TL_messages_updateDialogFiltersOrder();
-            ArrayList<MessagesController.DialogFilter> filters = fragment.getMessagesController().getDialogFilters();
-            for (int a = 0, N = filters.size(); a < N; a++) {
-                req.order.add(filters.get(a).id);
-            }
-            fragment.getConnectionsManager().sendRequest(req, null);
+        if (atBegin && !filter.isLocal()) {
+            fragment.getConnectionsManager().sendRequest(fragment.getMessagesController().createDialogFiltersOrderRequest(), null);
         }
         if (onFinish != null) {
             onFinish.run();
@@ -1109,6 +1113,14 @@ public class FilterCreateActivity extends BaseFragment {
 
     public static void saveFilterToServer(MessagesController.DialogFilter filter, int newFilterFlags, String newFilterName, ArrayList<TLRPC.MessageEntity> newFilterNameEntities, boolean newFilterNoanimate, int newFilterColor, String newFilterEmoticon, ArrayList<Long> newAlwaysShow, ArrayList<Long> newNeverShow, LongSparseIntArray newPinned, boolean creatingNew, boolean atBegin, boolean hasUserChanged, boolean resetUnreadCounter, boolean progress, BaseFragment fragment, Runnable onFinish) {
         if (fragment == null || fragment.getParentActivity() == null) {
+            return;
+        }
+        if (creatingNew) {
+            filter.id = fragment.getMessagesController().nextDialogFilterId();
+        }
+        if (filter.isLocal()) {
+            filter.pinnedDialogs = newPinned;
+            processAddFilter(filter, newFilterFlags, newFilterEmoticon, newFilterName, newFilterNameEntities, newFilterNoanimate, newFilterColor, newAlwaysShow, newNeverShow, creatingNew, atBegin, hasUserChanged, resetUnreadCounter, fragment, onFinish);
             return;
         }
         AlertDialog progressDialog;
@@ -1221,6 +1233,10 @@ public class FilterCreateActivity extends BaseFragment {
                     }
                 } catch (Exception e) {
                     FileLog.e(e);
+                }
+                if (creatingNew && error != null && "DIALOG_FILTERS_TOO_MUCH".equals(error.text)) {
+                    filter.id = messagesController.nextLocalDialogFilterId();
+                    filter.pinnedDialogs = newPinned;
                 }
                 processAddFilter(filter, newFilterFlags, newFilterEmoticon, newFilterName, newFilterNameEntities, newFilterNoanimate, newFilterColor, newAlwaysShow, newNeverShow, creatingNew, atBegin, hasUserChanged, resetUnreadCounter, fragment, onFinish);
             } else if (onFinish != null) {

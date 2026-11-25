@@ -365,12 +365,12 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
                 }
             }
             if (dialog != null) {
+                MessagesController controller = MessagesController.getInstance(currentAccount);
+                MessagesController.DialogFilter filter = null;
                 if (dialogsType == 7 || dialogsType == 8) {
-                    MessagesController.DialogFilter filter = MessagesController.getInstance(currentAccount).selectedDialogFilter[dialogsType == 8 ? 1 : 0];
-                    pinned = filter != null && filter.pinnedDialogs.indexOfKey(dialog.id) >= 0;
-                } else {
-                    pinned = dialog.pinned;
+                    filter = controller.selectedDialogFilter[dialogsType == 8 ? 1 : 0];
                 }
+                pinned = controller.isDialogPinned(dialog, filter);
                 isFolder = dialog.isFolder;
                 isForumCell = MessagesController.getInstance(currentAccount).isForum(dialog.id);
             }
@@ -1257,8 +1257,12 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         int toIndex = fixPosition(toPosition);
         TLRPC.Dialog fromDialog = dialogs.get(fromIndex);
         TLRPC.Dialog toDialog = dialogs.get(toIndex);
-        if (dialogsType == 7 || dialogsType == 8) {
-            MessagesController.DialogFilter filter = MessagesController.getInstance(currentAccount).selectedDialogFilter[dialogsType == 8 ? 1 : 0];
+        MessagesController controller = MessagesController.getInstance(currentAccount);
+        MessagesController.DialogFilter filter = dialogsType == 7 || dialogsType == 8
+                ? controller.selectedDialogFilter[dialogsType == 8 ? 1 : 0] : null;
+        if (controller.isLocalDialogPinned(fromDialog, filter)) {
+            controller.swapLocalDialogPins(fromDialog.id, toDialog.id, filter);
+        } else if (filter != null) {
             int idx1 = filter.pinnedDialogs.get(fromDialog.id);
             int idx2 = filter.pinnedDialogs.get(toDialog.id);
             filter.pinnedDialogs.put(fromDialog.id, idx2);
@@ -1670,6 +1674,12 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
             }
         }
 
+        java.util.Set<String> hiddenIds = org.telegram.messenger.BygramChatPrivacy.hiddenIds(currentAccount);
+        if ((dialogsType == DialogsActivity.DIALOGS_TYPE_DEFAULT || dialogsType == 7 || dialogsType == 8)
+                && !hiddenIds.isEmpty()) {
+            array = new ArrayList<>(array);
+            array.removeIf(dialog -> hiddenIds.contains(Long.toString(dialog.id)));
+        }
         dialogsCount = array.size();
         isEmpty = false;
         if (dialogsCount == 0 && parentFragment.isArchive()) {

@@ -43,6 +43,7 @@ import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.text.TextUtils;
 import android.text.style.ClickableSpan;
+import android.text.style.ForegroundColorSpan;
 import android.text.style.ReplacementSpan;
 import android.text.style.StyleSpan;
 import android.view.Gravity;
@@ -62,6 +63,9 @@ import androidx.core.math.MathUtils;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.BygramActivityController;
+import org.telegram.messenger.BygramBadgeController;
+import org.telegram.messenger.BygramFlame;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.ChatThemeController;
 import org.telegram.utils.code.highlight.CodeHighlighting;
@@ -102,6 +106,8 @@ import org.telegram.ui.Components.AnimatedFloat;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BubbleCounterPath;
 import org.telegram.ui.Components.ButtonBounce;
+import org.telegram.ui.Components.BygramBadgeDrawable;
+import org.telegram.ui.Components.BygramFlameBadge;
 import org.telegram.ui.Components.CanvasButton;
 import org.telegram.ui.Components.CheckBox2;
 import org.telegram.ui.Components.ColoredImageSpan;
@@ -1319,12 +1325,41 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     private static final float BADGE_DRAWABLE_SIZE = 16;
     private static final float BADGE_DRAWABLE_OFFSET = (BADGE_SIZE - BADGE_DRAWABLE_SIZE) / 2f;
 
+    private boolean bygramNeedsLayout;
+    private BygramFlame.Badge lastFlameBadge;
+    private boolean lastBygramBadge;
+
+    public void refreshBygramFlame() {
+        BygramFlame.Badge next = getBygramFlameBadge();
+        if (bygramFlameChanged(next)) {
+            buildLayout();
+            invalidate();
+        }
+    }
+
+    private boolean bygramFlameChanged(BygramFlame.Badge next) {
+        if (next == null || lastFlameBadge == null) return next != lastFlameBadge;
+        return next.days != lastFlameBadge.days || next.active != lastFlameBadge.active;
+    }
+
+    private BygramFlame.Badge getBygramFlameBadge() {
+        return isDialogCell && DialogObject.isUserDialog(currentDialogId) && currentDialogFolderId == 0
+                ? BygramFlame.getDialogBadge(currentAccount, currentDialogId) : null;
+    }
+
     public void buildLayout() {
         if (isTransitionSupport) {
             return;
         }
         if (isDialogCell) {
-            boolean needUpdate = updateHelper.update();
+            BygramFlame.Badge flame = getBygramFlameBadge();
+            boolean badge = user != null && !UserObject.isUserSelf(user) && BygramBadgeController.hasBadge(user)
+                    || chat != null && BygramBadgeController.hasBadge(chat);
+            boolean bygramChanged = bygramFlameChanged(flame) || badge != lastBygramBadge || bygramNeedsLayout;
+            lastFlameBadge = flame;
+            lastBygramBadge = badge;
+            bygramNeedsLayout = false;
+            boolean needUpdate = updateHelper.update() || bygramChanged;
             if (!needUpdate && currentDialogFolderId == 0 && currentDialogCommunityId == 0 && encryptedChat == null) {
                 return;
             }
@@ -1369,6 +1404,19 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         CharSequence buttonString = null;
         if (!isForumCell() && (isDialogCell || isTopic)) {
             printingString = MessagesController.getInstance(currentAccount).getPrintingString(currentDialogId, getTopicId(), true);
+        }
+        if (printingString == null && isDialogCell && DialogObject.isUserDialog(currentDialogId)
+                && currentDialogId != UserConfig.getInstance(currentAccount).getClientUserId()
+                && !org.telegram.messenger.BygramChatPrivacy.isProtected(currentAccount, currentDialogId)) {
+            long requestedId = currentDialogId;
+            BygramActivityController.ActivityInfo activity = BygramActivityController.getCachedActivity(currentAccount, requestedId, () -> {
+                if (currentDialogId == requestedId) {
+                    bygramNeedsLayout = true;
+                    buildLayout();
+                    invalidate();
+                }
+            });
+            if (activity != null) printingString = activity.text();
         }
         currentMessagePaint = Theme.dialogs_messagePaint[paintIndex];
         boolean checkMessage = true;
@@ -1719,7 +1767,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             } else {
                 if (printingString != null) {
                     lastPrintString = printingString;
-                    printingStringType = MessagesController.getInstance(currentAccount).getPrintingStringType(currentDialogId, getTopicId());
+                    Integer activeType = MessagesController.getInstance(currentAccount).getPrintingStringType(currentDialogId, getTopicId());
+                    printingStringType = activeType == null ? -1 : activeType;
                     StatusDrawable statusDrawable = Theme.getChatStatusDrawable(printingStringType);
                     int startPadding = 0;
                     if (statusDrawable != null) {
@@ -2568,6 +2617,17 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             if (nameString instanceof String) {
                 nameString = ((String) nameString).replace('\n', ' ');
             }
+            SpannableStringBuilder bygramSuffix = new SpannableStringBuilder();
+            if (lastBygramBadge) {
+                BygramBadgeDrawable badge = new BygramBadgeDrawable(getContext(), chat != null, 16);
+                badge.setBounds(0, 0, badge.getIntrinsicWidth(), badge.getIntrinsicHeight());
+                bygramSuffix.append(' ').append("\uFFFC");
+                bygramSuffix.setSpan(new android.text.style.ImageSpan(badge), bygramSuffix.length() - 1,
+                        bygramSuffix.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+            if (lastFlameBadge != null) {
+                bygramSuffix.append(' ').append(new BygramFlameBadge(getContext(), lastFlameBadge.days, lastFlameBadge.active).text());
+            }
             CharSequence nameStringFinal = nameString;
             if (nameLayoutEllipsizeByGradient) {
                 nameLayoutFits = nameStringFinal.length() == TextUtils.ellipsize(nameStringFinal, Theme.dialogs_namePaint[paintIndex], ellipsizeWidth, TextUtils.TruncateAt.END).length();
@@ -2578,7 +2638,9 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             }
             nameIsEllipsized = Theme.dialogs_namePaint[paintIndex].measureText(nameStringFinal.toString()) > ellipsizeWidth;
             if (!twoLinesForName) {
-                nameStringFinal = TextUtils.ellipsize(nameStringFinal, Theme.dialogs_namePaint[paintIndex], ellipsizeWidth, TextUtils.TruncateAt.END);
+                float suffixWidth = Layout.getDesiredWidth(bygramSuffix, Theme.dialogs_namePaint[paintIndex]);
+                nameStringFinal = TextUtils.ellipsize(nameStringFinal, Theme.dialogs_namePaint[paintIndex],
+                        Math.max(0, ellipsizeWidth - suffixWidth), TextUtils.TruncateAt.END);
             }
             nameStringFinal = Emoji.replaceEmoji(nameStringFinal, Theme.dialogs_namePaint[paintIndex].getFontMetricsInt(), false);
             if (message != null && message.hasHighlightedWords()) {
@@ -2587,6 +2649,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     nameStringFinal = s;
                 }
             }
+            if (bygramSuffix.length() > 0) nameStringFinal = new SpannableStringBuilder(nameStringFinal).append(bygramSuffix);
             if (twoLinesForName) {
                 nameLayout = StaticLayoutEx.createStaticLayout(nameStringFinal, Theme.dialogs_namePaint[paintIndex], ellipsizeWidth, Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false, TextUtils.TruncateAt.END, ellipsizeWidth, 2);
             } else {
@@ -2860,6 +2923,21 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     messageString = s;
                 }
             }
+        }
+        if (currentDialogFolderId == 0 && currentDialogId != 0
+                && org.telegram.messenger.BygramChatPrivacy.isProtected(currentAccount, currentDialogId)) {
+            SpannableString protectedPreview = new SpannableString(getString(R.string.BygramProtectedPreview));
+            protectedPreview.setSpan(new ForegroundColorSpan(0xffd32f2f), 0, protectedPreview.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            messageString = protectedPreview;
+            messageNameString = null;
+            typingString = "";
+            thumbsCount = 0;
+        }
+        if (isBygramSpyOnlyDialog()) {
+            messageString = DialogMediaIconsHelper.addDialogMediaSpan(
+                    new SpannableStringBuilder(messageString == null || messageString.length() == 0
+                            ? getString(R.string.BygramOnlyDeletedMessages) : messageString),
+                    R.drawable.msg_delete, true);
         }
         messageWidth = Math.max(dp(12), messageWidth);
         buttonTop = dp(useForceThreeLines || SharedConfig.useThreeLinesLayout ? 58 : 62);
@@ -3490,6 +3568,9 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         boolean rebuildLayout = false;
         boolean invalidate = false;
         boolean oldIsForumCell = isForumCell();
+        boolean bygramSpyOnly = isBygramSpyOnlyDialog();
+        boolean bygramSpyChanged = lastBygramSpyOnly != bygramSpyOnly;
+        lastBygramSpyOnly = bygramSpyOnly;
         drawAvatarSelector = false;
         ttlPeriod = 0;
 
@@ -3565,12 +3646,10 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                         markUnread = dialog.unread_mark;
                         currentEditDate = message != null ? message.messageOwner.edit_date : 0;
                         lastMessageDate = dialog.last_message_date;
-                        if (dialogsType == 7 || dialogsType == 8) {
-                            MessagesController.DialogFilter filter = MessagesController.getInstance(currentAccount).selectedDialogFilter[dialogsType == 8 ? 1 : 0];
-                            drawPin = filter != null && filter.pinnedDialogs.indexOfKey(dialog.id) >= 0;
-                        } else {
-                            drawPin = currentDialogFolderId == 0 && dialog.pinned;
-                        }
+                        MessagesController controller = MessagesController.getInstance(currentAccount);
+                        MessagesController.DialogFilter filter = dialogsType == 7 || dialogsType == 8
+                                ? controller.selectedDialogFilter[dialogsType == 8 ? 1 : 0] : null;
+                        drawPin = currentDialogFolderId == 0 && controller.isDialogPinned(dialog, filter);
                         if (message != null) {
                             lastSendState = message.messageOwner.send_state;
                         }
@@ -3610,7 +3689,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             }
 
             if (mask != 0) {
-                boolean continueUpdate = false;
+                boolean continueUpdate = bygramSpyChanged;
                 if (user != null && !MessagesController.isSupportUser(user) && !user.bot && (mask & MessagesController.UPDATE_MASK_STATUS) != 0) {
                     user = MessagesController.getInstance(currentAccount).getUser(user.id);
                     if (wasDrawnOnline != isOnline()) {
@@ -5797,6 +5876,9 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
     @Override
     public boolean performAccessibilityAction(int action, Bundle arguments) {
+        if (action == R.id.acc_action_chat_preview && org.telegram.messenger.BygramChatPrivacy.isProtected(currentAccount, currentDialogId)) {
+            return false;
+        }
         if (action == R.id.acc_action_chat_preview && parentFragment != null) {
             parentFragment.showChatPreview(this);
             return true;
@@ -5812,7 +5894,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         } else {
             info.addAction(AccessibilityNodeInfo.ACTION_CLICK);
             info.addAction(AccessibilityNodeInfo.ACTION_LONG_CLICK);
-            if (!isFolderCell() && parentFragment != null) {
+            if (!isFolderCell() && parentFragment != null
+                    && !org.telegram.messenger.BygramChatPrivacy.isProtected(currentAccount, currentDialogId)) {
                 info.addAction(new AccessibilityNodeInfo.AccessibilityAction(R.id.acc_action_chat_preview, getString(R.string.AccActionChatPreview)));
             }
         }
@@ -5823,10 +5906,20 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         }
     }
 
+    private boolean lastBygramSpyOnly;
+
+    private boolean isBygramSpyOnlyDialog() {
+        return isDialogCell && !isTopic && currentDialogFolderId == 0
+                && MessagesStorage.getInstance(currentAccount).isBygramSpyOnlyDialog(currentDialogId);
+    }
+
     @Override
     public void onPopulateAccessibilityEvent(AccessibilityEvent event) {
         super.onPopulateAccessibilityEvent(event);
         StringBuilder sb = new StringBuilder();
+        if (isBygramSpyOnlyDialog()) {
+            sb.append(getString(R.string.BygramOnlyDeletedMessages)).append(". ");
+        }
         if (titleOverride != null) {
             sb.append(titleOverride);
             sb.append(". ");
@@ -5894,6 +5987,12 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         if (reactionMentionCount > 0) {
             sb.append(getString(R.string.AccDescrMentionReaction));
             sb.append(". ");
+        }
+        if (currentDialogFolderId == 0 && org.telegram.messenger.BygramChatPrivacy.isProtected(currentAccount, currentDialogId)) {
+            sb.append(getString(R.string.BygramProtectedPreview));
+            event.setContentDescription(sb);
+            setContentDescription(sb);
+            return;
         }
         if (message == null || currentDialogFolderId != 0) {
             event.setContentDescription(sb);

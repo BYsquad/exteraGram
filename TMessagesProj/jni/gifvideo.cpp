@@ -1,5 +1,6 @@
 #include <jni.h>
 #include <android/bitmap.h>
+#include <cinttypes>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -154,7 +155,7 @@ static enum AVPixelFormat get_format(AVCodecContext *ctx,
     const enum AVPixelFormat *p;
 
     for (p = pix_fmts; *p != -1; p++) {
-        LOGE("available format %d", p);
+        LOGE("available format %d", static_cast<int>(*p));
     }
 
     return pix_fmts[0];
@@ -418,7 +419,7 @@ extern "C" JNIEXPORT void JNICALL Java_org_telegram_ui_Components_AnimatedFileNa
         info->fmt_ctx->pb = avio;
 
         if ((ret = avformat_open_input(&info->fmt_ctx, nullptr, nullptr, nullptr)) < 0) {
-            LOGE("can't open source file at offset %s (offset=%lld), %s", info->src, fileOffset, av_err2str(ret));
+            LOGE("can't open source file at offset %s (offset=%" PRId64 "), %s", info->src, static_cast<int64_t>(fileOffset), av_err2str(ret));
             info->fmt_ctx = nullptr;
             delete info;
             return;

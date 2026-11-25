@@ -199,6 +199,9 @@ public class ApplicationLoader extends Application implements Provider {
         }
         applicationInited = true;
         NativeLoader.initNativeLibs(ApplicationLoader.applicationContext);
+        Utilities.globalQueue.postRunnable(BygramSpyMode::pruneSpyData);
+        BygramActivitySettings.migrate();
+        AndroidUtilities.runOnUIThread(BygramDeviceReporter::report);
 
         try {
             LocaleController.getInstance(); //TODO improve

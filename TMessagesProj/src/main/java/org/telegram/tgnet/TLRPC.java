@@ -59446,6 +59446,8 @@ public class TLRPC {
         public int ephemeralAnchorMsgId; // custom
         public long ephemeralReceiverBotId; //custom
         public boolean welcomeTemplateFirst; // custom
+        public boolean bygramDeleted; // custom
+        public int bygramChatDeletedAt; // local Spy event anchored to this message
 
         private static Message fromConstructor(int constructor) {
             switch (constructor) {

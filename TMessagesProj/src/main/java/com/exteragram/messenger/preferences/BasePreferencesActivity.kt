@@ -60,6 +60,10 @@ import kotlin.math.roundToInt
 abstract class BasePreferencesActivity : BaseFragment() {
 
     internal lateinit var listView: UniversalRecyclerView
+
+    protected fun refreshPreferenceItems() {
+        listView.adapter.update(true)
+    }
     private var pinnedHeader: View? = null
     protected lateinit var layoutManager: LinearLayoutManager
     private var headerFadeView: View? = null

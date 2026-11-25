@@ -32,6 +32,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.BygramChatPrivacy;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.LocaleController;
@@ -89,6 +90,10 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
     private LinearLayoutManager searchLayoutManager;
     private RecyclerItemsEnterAnimator itemsEnterAnimator;
     private boolean attached;
+    private boolean hiddenChatsVisible;
+    private FrameLayout hiddenChatsContainer;
+    private RecyclerListView hiddenChatsListView;
+    private final ArrayList<TLRPC.Dialog> hiddenChats = new ArrayList<>();
 
     private DefaultItemAnimator channelsItemAnimator;
     public FrameLayout channelsSearchContainer;
@@ -378,6 +383,31 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
         searchContainer.addView(noMediaFiltersSearchView);
         searchListView.setEmptyView(emptyView);
 
+        hiddenChatsContainer = new FrameLayout(context);
+        hiddenChatsListView = new RecyclerListView(context);
+        hiddenChatsListView.setClipToPadding(false);
+        hiddenChatsListView.setLayoutManager(new LinearLayoutManager(context));
+        hiddenChatsListView.setAdapter(new RecyclerListView.SelectionAdapter() {
+            @Override public boolean isEnabled(RecyclerView.ViewHolder holder) { return true; }
+            @Override public int getItemCount() { return hiddenChats.size(); }
+            @Override public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+                return new RecyclerListView.Holder(new DialogCell(fragment, context, true, false, currentAccount, null));
+            }
+            @Override public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
+                ((DialogCell) holder.itemView).setDialog(hiddenChats.get(position), DialogsActivity.DIALOGS_TYPE_DEFAULT, folderId);
+            }
+        });
+        hiddenChatsListView.setOnItemClickListener((view, position) -> {
+            if (position < 0 || position >= hiddenChats.size()) return;
+            long id = hiddenChats.get(position).id;
+            Bundle args = new Bundle();
+            if (id > 0) args.putLong("user_id", id);
+            else args.putLong("chat_id", -id);
+            BygramChatPrivacy.allowHiddenOnce(currentAccount, id);
+            parent.presentFragment(new ChatActivity(args));
+        });
+        hiddenChatsContainer.addView(hiddenChatsListView);
+
         channelsSearchContainer = new FrameLayout(context);
 
         channelsItemAnimator = new DefaultItemAnimator() {
@@ -639,6 +669,10 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
     }
 
     public void onTextChanged(String text) {
+        if (hiddenChatsVisible) {
+            if (TextUtils.isEmpty(text)) return;
+            hideHiddenChats();
+        }
         View view = getCurrentView();
         boolean reset = false;
         if (!attached) {
@@ -670,6 +704,27 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
         }
     }
 
+    public void showHiddenChats() {
+        hiddenChats.clear();
+        for (TLRPC.Dialog dialog : MessagesController.getInstance(currentAccount).getAllDialogs()) {
+            if (BygramChatPrivacy.isHidden(currentAccount, dialog.id)) hiddenChats.add(dialog);
+        }
+        hiddenChatsListView.getAdapter().notifyDataSetChanged();
+        hiddenChatsVisible = true;
+        updateTabs();
+        setPosition(0);
+        updateCurrent();
+    }
+
+    public void hideHiddenChats() {
+        if (!hiddenChatsVisible) return;
+        hiddenChatsVisible = false;
+        updateTabs();
+        setPosition(0);
+        updateCurrent();
+        hiddenChats.clear();
+    }
+
     public boolean includeFolder() {
         for (int i = 0; i < currentSearchFilters.size(); i++) {
             FiltersView.MediaFilterData data = currentSearchFilters.get(i);
@@ -681,6 +736,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
     }
 
     private void search(View view, int position, String query, boolean reset) {
+        if (view == hiddenChatsContainer) return;
         if (TextUtils.isEmpty(query)) {
             emptyView.subtitle.setVisibility(View.GONE);
         } else {
@@ -1280,6 +1336,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
 
         // setPagesPaddings(searchContainer, searchListView, pagesPaddingTop, pagesPaddingBottom, doNotRequestLayout);
         searchListView.setPadding(0, pagesPaddingTop, 0, pagesPaddingBottom, doNotRequestLayout);
+        hiddenChatsListView.setPadding(0, pagesPaddingTop, 0, pagesPaddingBottom, doNotRequestLayout);
         noMediaFiltersSearchView.setPagesPaddings(pagesPaddingTop, pagesPaddingBottom, doNotRequestLayout);
         {
             MarginLayoutParams mlp = (MarginLayoutParams) emptyView.getLayoutParams();
@@ -1556,6 +1613,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
         private final static int BOTS_TYPE = 4;
         private final static int PUBLIC_POSTS_TYPE = 5;
         private final static int POSTS_TYPE = 6;
+        private final static int HIDDEN_TYPE = 7;
 
         public ViewPagerAdapter() {
             updateItems();
@@ -1563,6 +1621,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
 
         public void updateItems() {
             items.clear();
+            if (hiddenChatsVisible) items.add(new Item(HIDDEN_TYPE));
             items.add(new Item(DIALOGS_TYPE));
             if (communityId != 0) {
                 return;
@@ -1600,7 +1659,9 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
 
         @Override
         public CharSequence getItemTitle(int position) {
-            if (items.get(position).type == DIALOGS_TYPE) {
+            if (items.get(position).type == HIDDEN_TYPE) {
+                return getString(R.string.BygramHiddenChats);
+            } else if (items.get(position).type == DIALOGS_TYPE) {
                 return getString(R.string.SearchAllChatsShort);
             } else if (items.get(position).type == CHANNELS_TYPE) {
                 return getString(R.string.ChannelsTab);
@@ -1628,7 +1689,9 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
 
         @Override
         public View createView(int viewType) {
-            if (viewType == 1) {
+            if (viewType == 1007) {
+                return hiddenChatsContainer;
+            } else if (viewType == 1) {
                 return searchContainer;
             } else if (viewType == 3) {
                 return channelsSearchContainer;
@@ -1675,6 +1738,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
 
         @Override
         public int getItemViewType(int position) {
+            if (items.get(position).type == HIDDEN_TYPE) return 1007;
             if (items.get(position).type == DIALOGS_TYPE) {
                 return 1;
             }
