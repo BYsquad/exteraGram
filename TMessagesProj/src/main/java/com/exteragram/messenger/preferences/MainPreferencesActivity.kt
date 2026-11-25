@@ -155,7 +155,7 @@ class MainPreferencesActivity : BasePreferencesActivity(), NotificationCenter.No
                 }
             }
             PreferenceItem.CROWDIN -> Browser.openUrl(parentActivity, "https://crowdin.com/project/exteralocales")
-            PreferenceItem.SOURCE_CODE -> Browser.openUrl(parentActivity, "https://github.com/BYsquad/exteraGram")
+            PreferenceItem.SOURCE_CODE -> Browser.openUrl(parentActivity, "https://github.com/BYsquad/exteraGram/tree/bygram/exteragram-base")
             PreferenceItem.UPSTREAM -> Browser.openUrl(parentActivity, "https://github.com/exteraSquad/exteraGram")
         }
     }
