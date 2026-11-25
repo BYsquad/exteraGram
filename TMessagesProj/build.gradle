@@ -135,7 +135,7 @@ android {
 
     sourceSets {
         main {
-            jniLibs.srcDirs = ['jni', 'jniLibs']
+            jniLibs.srcDirs = ['jniLibs']
             res.srcDirs = ['src/main/res', 'src/main/res-appicons', 'src/main/res-solar', 'src/main/res-remix', 'src/main/res-tabs']
         }
     }

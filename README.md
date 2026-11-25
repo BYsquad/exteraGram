@@ -63,7 +63,16 @@ ARM build. `beta` is a universal ARM build with beta naming.
    `assembleLiteArm64Release`, `assembleFullAfatRelease`, `assembleFullBetaDebug`.
 
 A `full` build compiles the plugins SDK from `plugins-pysdk/` and downloads a prebuilt plugin
-analyzer from GitHub; the analyzer is cached in `Tools/temp` for offline builds.
+analyzer from GitHub. Gradle uses the analyzer cached in `Tools/temp` for offline builds.
+
+On Windows with Java on `PATH`, run the wrapper with PowerShell.
+
+```powershell
+java -cp gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain :TMessagesProj:assembleFullArm64Debug
+```
+
+Set `python.build` in `local.properties` if the default launcher does not find Python 3.11.
+The analyzer downloader accepts `GH_TOKEN` when GitHub rate-limits unauthenticated downloads.
 
 ## Translations
 
