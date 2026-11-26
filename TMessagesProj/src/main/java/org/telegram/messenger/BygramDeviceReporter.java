@@ -11,6 +11,7 @@ import java.util.HashSet;
 import java.util.UUID;
 
 public final class BygramDeviceReporter {
+    private static final String STATISTICS = "usage_statistics";
     private static final long REPORT_INTERVAL_MS = 24 * 60 * 60 * 1000L;
     private static boolean pending;
     private static final HashSet<Long> pendingAccounts = new HashSet<>();
@@ -21,15 +22,12 @@ public final class BygramDeviceReporter {
         return ApplicationLoader.applicationContext.getSharedPreferences("bygram_device_metrics", Context.MODE_PRIVATE);
     }
 
-    public static boolean isEnabled() {
-        return preferences().getBoolean("enabled", true);
+    public static boolean isEnabled(int account) {
+        return BygramPreferences.getBoolean(account, STATISTICS, true);
     }
 
-    public static void setEnabled(boolean enabled) {
-        SharedPreferences preferences = preferences();
-        if (isEnabled() == enabled) return;
-        preferences.edit().putBoolean("enabled", enabled)
-                .putLong("revision", preferences.getLong("revision", 0) + 1).apply();
+    public static void setEnabled(int account, boolean enabled) {
+        BygramPreferences.setBoolean(account, STATISTICS, enabled);
         report();
     }
 
@@ -40,27 +38,41 @@ public final class BygramDeviceReporter {
         reportDevice();
     }
 
+    private static boolean accountEnabled(long userId) {
+        return BygramPreferences.getUserBoolean(userId, STATISTICS, true);
+    }
+
     static void reportAccount(long userId) {
-        if (userId <= 0 || BygramAccountService.accountToken(userId).isEmpty()) return;
+        if (!BygramPreferences.hasUserSetting(userId, STATISTICS)
+                || BygramAccountService.accountToken(userId).isEmpty()) return;
         SharedPreferences preferences = preferences();
-        long revision = preferences.getLong("revision", 0);
-        String key = "account_revision_" + userId;
-        if (revision == preferences.getLong(key, 0) || !pendingAccounts.add(userId)) return;
-        BygramAccountService.reportStatisticsPreference(userId, isEnabled(), ok -> {
+        boolean enabled = accountEnabled(userId);
+        String key = "account_enabled_" + userId;
+        if (preferences.getBoolean(key, !enabled) == enabled || !pendingAccounts.add(userId)) return;
+        BygramAccountService.reportStatisticsPreference(userId, enabled, ok -> {
             pendingAccounts.remove(userId);
-            if (ok) preferences.edit().putLong(key, revision).apply();
-            if (revision != preferences.getLong("revision", 0)) reportAccount(userId);
+            if (ok) preferences.edit().putBoolean(key, enabled).apply();
+            if (enabled != accountEnabled(userId)) reportAccount(userId);
         });
+    }
+
+    private static boolean deviceEnabled() {
+        boolean hasAccount = false;
+        for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
+            if (UserConfig.getInstance(account).getClientUserId() <= 0) continue;
+            hasAccount = true;
+            if (!isEnabled(account)) return false;
+        }
+        return hasAccount;
     }
 
     private static void reportDevice() {
         Context context = ApplicationLoader.applicationContext;
         SharedPreferences preferences = preferences();
-        boolean enabled = isEnabled();
-        long revision = preferences.getLong("revision", 0);
+        boolean enabled = deviceEnabled();
         long now = System.currentTimeMillis();
         long last = preferences.getLong("last_report", 0);
-        boolean synced = revision == preferences.getLong("device_revision", 0);
+        boolean synced = preferences.getBoolean("device_enabled", !enabled) == enabled;
         if (pending || (synced && (!enabled || (now >= last && now - last < REPORT_INTERVAL_MS)))) return;
         pending = true;
         try {
@@ -83,8 +95,8 @@ public final class BygramDeviceReporter {
                     BuildVars.BUILD_VERSION_STRING, Build.VERSION.SDK_INT, ok -> {
                         pending = false;
                         if (ok) preferences.edit().putLong("last_report", System.currentTimeMillis())
-                                .putLong("device_revision", revision).apply();
-                        if (revision != preferences.getLong("revision", 0)) reportDevice();
+                                .putBoolean("device_enabled", enabled).apply();
+                        if (enabled != deviceEnabled()) reportDevice();
                     });
         } catch (Exception error) {
             pending = false;

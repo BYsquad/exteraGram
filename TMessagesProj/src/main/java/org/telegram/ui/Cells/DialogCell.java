@@ -1326,6 +1326,26 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     private static final float BADGE_DRAWABLE_OFFSET = (BADGE_SIZE - BADGE_DRAWABLE_SIZE) / 2f;
 
     private boolean bygramNeedsLayout;
+    private CharSequence bygramActivityText;
+    private final Runnable bygramActivityRefresh = this::refreshBygramActivity;
+
+    private boolean canShowBygramActivity() {
+        return isDialogCell && DialogObject.isUserDialog(currentDialogId)
+                && currentDialogId != UserConfig.getInstance(currentAccount).getClientUserId()
+                && !org.telegram.messenger.BygramChatPrivacy.hidesNotification(currentAccount, currentDialogId);
+    }
+
+    public void refreshBygramActivity() {
+        if (!isAttachedToWindow() || !canShowBygramActivity()
+                || MessagesController.getInstance(currentAccount).getPrintingString(currentDialogId, getTopicId(), true) != null) return;
+        BygramActivityController.ActivityInfo activity = BygramActivityController.getCachedActivity(
+                currentAccount, currentDialogId, bygramActivityRefresh);
+        if (!TextUtils.equals(bygramActivityText, activity == null ? null : activity.text())) {
+            bygramNeedsLayout = true;
+            buildLayout();
+            invalidate();
+        }
+    }
     private BygramFlame.Badge lastFlameBadge;
     private boolean lastBygramBadge;
     private android.text.style.ImageSpan bygramNameBadge;
@@ -1410,18 +1430,11 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         if (!isForumCell() && (isDialogCell || isTopic)) {
             printingString = MessagesController.getInstance(currentAccount).getPrintingString(currentDialogId, getTopicId(), true);
         }
-        if (printingString == null && isDialogCell && DialogObject.isUserDialog(currentDialogId)
-                && currentDialogId != UserConfig.getInstance(currentAccount).getClientUserId()
-                && !org.telegram.messenger.BygramChatPrivacy.isProtected(currentAccount, currentDialogId)) {
-            long requestedId = currentDialogId;
-            BygramActivityController.ActivityInfo activity = BygramActivityController.getCachedActivity(currentAccount, requestedId, () -> {
-                if (currentDialogId == requestedId) {
-                    bygramNeedsLayout = true;
-                    buildLayout();
-                    invalidate();
-                }
-            });
-            if (activity != null) printingString = activity.text();
+        bygramActivityText = null;
+        if (printingString == null && canShowBygramActivity()) {
+            BygramActivityController.ActivityInfo activity = BygramActivityController.getCachedActivity(
+                    currentAccount, currentDialogId, bygramActivityRefresh);
+            if (activity != null) printingString = bygramActivityText = activity.text();
         }
         currentMessagePaint = Theme.dialogs_messagePaint[paintIndex];
         boolean checkMessage = true;

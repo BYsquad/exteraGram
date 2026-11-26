@@ -26,7 +26,7 @@ public final class BygramSpyMode {
     private static final int DATA_RETENTION_SECONDS = 90 * 24 * 60 * 60;
     public static final String SPY_SAVE_DELETED = "bygram_spy_save_deleted";
     public static final String SPY_SAVE_OWN_DELETED = "bygram_spy_save_own_deleted";
-    public static final String SPY_NOTIFY_DELETED = "bygram_spy_notify_deleted";
+    private static final String SPY_NOTIFY_DELETED = "bygram_spy_notify_deleted";
     public static final String SPY_SAVE_EDITS = "bygram_spy_save_edits";
     public static final String SPY_SAVE_READ_DATE = "bygram_spy_save_read_date";
     public static final String SPY_SAVE_LAST_ONLINE = "bygram_spy_save_last_online";
@@ -34,18 +34,50 @@ public final class BygramSpyMode {
     private static final String EDIT_HISTORY_PREFIX = "bygram_edit_";
     private static SQLiteOpenHelper historyOpenHelper;
 
+    public enum DeletionNotification {
+        PRIVATE("private", R.string.BygramSpyPrivateChats, R.string.BygramMessageDeletedInChat),
+        GROUP("groups", R.string.FilterGroups, R.string.BygramMessageDeletedInGroup),
+        CHANNEL("channels", R.string.FilterChannels, R.string.BygramMessageDeletedInChannel),
+        BOT("bots", R.string.FilterBots, R.string.BygramMessageDeletedInBot);
+
+        public final String channelId;
+        public final int title;
+        final int message;
+        private final String key;
+
+        DeletionNotification(String type, int title, int message) {
+            channelId = "private".equals(type) ? "bygram_spy_deletions" : "bygram_spy_deletions_" + type;
+            key = SPY_NOTIFY_DELETED + "_" + type;
+            this.title = title;
+            this.message = message;
+        }
+
+        public boolean isEnabled(int account) {
+            return BygramPreferences.getBoolean(account, key, getBoolean(account, SPY_NOTIFY_DELETED));
+        }
+
+        public void setEnabled(int account, boolean enabled) {
+            setBoolean(account, key, enabled);
+        }
+    }
+
+    public static boolean hasDeletionNotifications(int account) {
+        return DeletionNotification.PRIVATE.isEnabled(account) || DeletionNotification.GROUP.isEnabled(account)
+                || DeletionNotification.CHANNEL.isEnabled(account) || DeletionNotification.BOT.isEnabled(account);
+    }
+
     private BygramSpyMode() {}
 
     static SharedPreferences preferences() {
-        return MessagesController.getGlobalMainSettings();
+        return BygramPreferences.preferences();
     }
 
-    public static boolean getBoolean(String key) {
-        return preferences().getBoolean(key, false);
+    public static boolean getBoolean(int account, String key) {
+        return BygramPreferences.getBoolean(account, key, false);
     }
 
-    public static void setBoolean(String key, boolean enabled) {
-        preferences().edit().putBoolean(key, enabled).apply();
+    public static void setBoolean(int account, String key, boolean enabled) {
+        BygramPreferences.setBoolean(account, key, enabled);
     }
 
     public static boolean isHistoryAllowed(int account, long dialogId) {
@@ -117,7 +149,7 @@ public final class BygramSpyMode {
     }
 
     public static synchronized void saveEditHistory(int account, long dialogId, int messageId, int date, TLRPC.Message message) {
-        if (!getBoolean(SPY_SAVE_EDITS) || !isHistoryAllowed(account, dialogId) || message == null) {
+        if (!getBoolean(account, SPY_SAVE_EDITS) || !isHistoryAllowed(account, dialogId) || message == null) {
             return;
         }
         String key = historyKey(account, dialogId, messageId);
@@ -220,7 +252,7 @@ public final class BygramSpyMode {
     }
 
     public static void rememberReadDate(int account, long dialogId, int previousMaxMessageId, int maxMessageId, int date) {
-        if (!getBoolean(SPY_SAVE_READ_DATE) || maxMessageId <= 0 || date <= 0) return;
+        if (!getBoolean(account, SPY_SAVE_READ_DATE) || maxMessageId <= 0 || date <= 0) return;
         String key = "bygram_read_ranges_" + account + '_' + dialogId;
         try {
             JSONArray ranges = new JSONArray(preferences().getString(key, "[]"));
@@ -277,7 +309,7 @@ public final class BygramSpyMode {
     }
 
     public static int getReadDate(int account, long dialogId, int messageId) {
-        if (!getBoolean(SPY_SAVE_READ_DATE)) return 0;
+        if (!getBoolean(account, SPY_SAVE_READ_DATE)) return 0;
         try {
             JSONArray ranges = new JSONArray(preferences().getString("bygram_read_ranges_" + account + '_' + dialogId, "[]"));
             for (int i = ranges.length() - 1; i >= 0; i--) {
@@ -294,7 +326,7 @@ public final class BygramSpyMode {
     }
 
     public static synchronized void rememberLastOnline(int account, long userId, int date) {
-        if (!getBoolean(SPY_SAVE_LAST_ONLINE) || userId <= 0 || userId == UserConfig.getInstance(account).getClientUserId() || date <= 0) return;
+        if (!getBoolean(account, SPY_SAVE_LAST_ONLINE) || userId <= 0 || userId == UserConfig.getInstance(account).getClientUserId() || date <= 0) return;
         int now = ConnectionsManager.getInstance(account).getCurrentTime();
         if (date > now || date <= now - DATA_RETENTION_SECONDS) return;
         String key = "bygram_online_" + account + '_' + userId;
@@ -305,20 +337,22 @@ public final class BygramSpyMode {
     }
 
     public static int getLastOnline(int account, long userId) {
-        int date = getBoolean(SPY_SAVE_LAST_ONLINE) ? preferences().getInt("bygram_online_" + account + '_' + userId, 0) : 0;
+        int date = getBoolean(account, SPY_SAVE_LAST_ONLINE) ? preferences().getInt("bygram_online_" + account + '_' + userId, 0) : 0;
         int now = ConnectionsManager.getInstance(account).getCurrentTime();
         return date <= now && date > now - DATA_RETENTION_SECONDS ? date : 0;
     }
 
-    public static synchronized void clearSpyData() {
+    public static synchronized void clearSpyData(int account) {
         try {
-            editDatabase().delete("revisions", null, null);
+            editDatabase().delete("revisions", "history_key GLOB ?", new String[]{EDIT_HISTORY_PREFIX + account + "_*"});
         } catch (Exception e) {
             FileLog.e(e);
         }
         SharedPreferences.Editor editor = preferences().edit();
         for (String key : preferences().getAll().keySet()) {
-            if (key.startsWith("bygram_read_") || key.startsWith("bygram_online_")) editor.remove(key);
+            if (key.startsWith("bygram_read_ranges_" + account + "_")
+                    || key.startsWith("bygram_read_baseline_" + account + "_")
+                    || key.startsWith("bygram_online_" + account + "_")) editor.remove(key);
         }
         editor.apply();
     }

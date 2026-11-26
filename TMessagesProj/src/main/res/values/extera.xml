@@ -1463,7 +1463,7 @@
     <string name="BygramPreferences">BYgram Settings</string>
     <string name="BygramOther">Other</string>
     <string name="BygramUsageStatistics">Usage statistics</string>
-    <string name="BygramUsageStatisticsInfo">BYgram uses usage statistics to count how many people use the client. If you turn this off, this device is removed from the count, and your accounts and their flames are excluded from usage statistics once the change syncs. Flames still work in chats.</string>
+    <string name="BygramUsageStatisticsInfo">This setting applies to this account. After syncing, opting out excludes the account and its flames from usage statistics. A device is counted only when all signed-in accounts allow statistics. Flames still work in chats.</string>
     <string name="BygramBasedOnExtera">Based on exteraGram</string>
     <string name="BygramSourceCode">Source code</string>
     <string name="BygramUpdateAvailable">A BYgram update is available</string>
@@ -1506,7 +1506,13 @@
     <string name="BygramEditHistory">Edit history</string>
     <string name="BygramSaveLastOnlineInfo">Keeps the latest observed online time for users with hidden last seen. The time is approximate.</string>
     <string name="BygramNoEditHistory">No saved edits</string>
-    <string name="BygramNotifyDeleted">Notify when messages are deleted in private chats</string>
+    <string name="BygramUpdateButton">Update available</string>
+    <string name="BygramSpyDeletionNotifications">Deletion notifications</string>
+    <string name="BygramSpyPrivateChats">Private chats</string>
+    <string name="BygramSpyNotificationTitle">Spy · %1$s</string>
+    <string name="BygramMessageDeletedInGroup">A message was deleted in the group “%1$s”</string>
+    <string name="BygramMessageDeletedInChannel">A post was deleted in the channel “%1$s”</string>
+    <string name="BygramMessageDeletedInBot">A message was deleted in the chat with the bot %1$s</string>
     <string name="BygramActivityAvailableUsers">Contacts and chats</string>
     <string name="BygramProfileViews">Profile views</string>
     <string name="BygramActivitySelectedUsers">People with access</string>

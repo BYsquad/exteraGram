@@ -1,6 +1,5 @@
 package org.telegram.messenger;
 
-import android.content.SharedPreferences;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_account;
@@ -17,69 +16,65 @@ public final class BygramGhostMode {
 
     private BygramGhostMode() {}
 
-    public static boolean getBoolean(String key) {
+    public static boolean getBoolean(int account, String key) {
         boolean defaultValue = GHOST_NO_READ.equals(key) || GHOST_NO_STORY_READ.equals(key)
                 || GHOST_NO_ONLINE.equals(key) || GHOST_NO_TYPING.equals(key);
-        return preferences().getBoolean(key, defaultValue);
+        return BygramPreferences.getBoolean(account, key, defaultValue);
     }
 
-    public static void setBoolean(String key, boolean value) {
-        preferences().edit().putBoolean(key, value).apply();
+    public static void setBoolean(int account, String key, boolean value) {
+        BygramPreferences.setBoolean(account, key, value);
     }
 
-    private static SharedPreferences preferences() {
-        return MessagesController.getGlobalMainSettings();
+    public static boolean isGhostEnabled(int account) {
+        return getBoolean(account, GHOST_ENABLED);
     }
 
-    public static boolean isGhostEnabled() {
-        return getBoolean(GHOST_ENABLED);
+    public static boolean shouldBlockReadReceipts(int account) {
+        return isGhostEnabled(account) && getBoolean(account, GHOST_NO_READ);
     }
 
-    public static boolean shouldBlockReadReceipts() {
-        return isGhostEnabled() && getBoolean(GHOST_NO_READ);
+    public static boolean shouldBlockStoryReads(int account) {
+        return isGhostEnabled(account) && getBoolean(account, GHOST_NO_STORY_READ);
     }
 
-    public static boolean shouldBlockStoryReads() {
-        return isGhostEnabled() && getBoolean(GHOST_NO_STORY_READ);
+    public static boolean shouldBlockOnline(int account) {
+        return isGhostEnabled(account) && getBoolean(account, GHOST_NO_ONLINE);
     }
 
-    public static boolean shouldBlockOnline() {
-        return isGhostEnabled() && getBoolean(GHOST_NO_ONLINE);
+    public static boolean shouldBlockTyping(int account) {
+        return isGhostEnabled(account) && getBoolean(account, GHOST_NO_TYPING);
     }
 
-    public static boolean shouldBlockTyping() {
-        return isGhostEnabled() && getBoolean(GHOST_NO_TYPING);
+    public static boolean shouldForceOffline(int account) {
+        return shouldBlockOnline(account);
     }
 
-    public static boolean shouldForceOffline() {
-        return shouldBlockOnline();
+    public static boolean shouldReadOnActions(int account) {
+        return isGhostEnabled(account) && getBoolean(account, GHOST_READ_ON_ACTIONS);
     }
 
-    public static boolean shouldReadOnActions() {
-        return isGhostEnabled() && getBoolean(GHOST_READ_ON_ACTIONS);
+    public static boolean shouldAutoOffline(int account) {
+        return shouldBlockOnline(account) && getBoolean(account, GHOST_AUTO_OFFLINE);
     }
 
-    public static boolean shouldAutoOffline() {
-        return shouldBlockOnline() && getBoolean(GHOST_AUTO_OFFLINE);
-    }
-
-    public static boolean prepareRequest(TLObject request, boolean allowReadReceipt) {
-        if (request instanceof TL_account.updateStatus status && shouldBlockOnline()) {
+    public static boolean prepareRequest(int account, TLObject request, boolean allowReadReceipt) {
+        if (request instanceof TL_account.updateStatus status && shouldBlockOnline(account)) {
             status.offline = true;
         }
-        if (shouldBlockStoryReads() && (request instanceof TL_stories.TL_stories_readStories
+        if (shouldBlockStoryReads(account) && (request instanceof TL_stories.TL_stories_readStories
                 || request instanceof TL_stories.TL_stories_incrementStoryViews)) {
             return false;
         }
-        if (shouldBlockTyping() && request instanceof TLRPC.TL_messages_setTyping typing) {
+        if (shouldBlockTyping(account) && request instanceof TLRPC.TL_messages_setTyping typing) {
             // These actions participate in the call or bot draft lifecycle.
             return typing.action instanceof TLRPC.TL_speakingInGroupCallAction
                     || typing.action instanceof TLRPC.TL_sendMessageStopDraftAction;
         }
-        if (shouldBlockTyping() && request instanceof TLRPC.TL_messages_setEncryptedTyping) {
+        if (shouldBlockTyping(account) && request instanceof TLRPC.TL_messages_setEncryptedTyping) {
             return false;
         }
-        return allowReadReceipt || !shouldBlockReadReceipts() || !isReadReceipt(request);
+        return allowReadReceipt || !shouldBlockReadReceipts(account) || !isReadReceipt(request);
     }
 
     private static boolean isReadReceipt(TLObject request) {
@@ -135,14 +130,14 @@ public final class BygramGhostMode {
         return null;
     }
 
-    public static int ghostOptionsEnabled() {
+    public static int ghostOptionsEnabled(int account) {
         int count = 0;
-        if (getBoolean(GHOST_NO_READ)) count++;
-        if (getBoolean(GHOST_NO_STORY_READ)) count++;
-        if (getBoolean(GHOST_NO_ONLINE)) count++;
-        if (getBoolean(GHOST_NO_TYPING)) count++;
-        if (getBoolean(GHOST_READ_ON_ACTIONS)) count++;
-        if (getBoolean(GHOST_AUTO_OFFLINE)) count++;
+        if (getBoolean(account, GHOST_NO_READ)) count++;
+        if (getBoolean(account, GHOST_NO_STORY_READ)) count++;
+        if (getBoolean(account, GHOST_NO_ONLINE)) count++;
+        if (getBoolean(account, GHOST_NO_TYPING)) count++;
+        if (getBoolean(account, GHOST_READ_ON_ACTIONS)) count++;
+        if (getBoolean(account, GHOST_AUTO_OFFLINE)) count++;
         return count;
     }
 

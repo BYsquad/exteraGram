@@ -41,8 +41,8 @@ public final class BygramProfileBackground {
     public static boolean hasLocal(long userId) { return file(userId).getBaseFile().isFile(); }
     public static boolean isPrivate(long userId) { return prefs().getBoolean("bygram_background_private_" + userId, true); }
     public static boolean isStretched(long userId) { return prefs().getBoolean("bygram_background_stretch_" + userId, false); }
-    public static boolean showOthers() { return prefs().getBoolean("bygram_background_others", true); }
-    public static void setShowOthers(boolean show) { prefs().edit().putBoolean("bygram_background_others", show).apply(); }
+    public static boolean showOthers(long userId) { return BygramPreferences.getUserBoolean(userId, "bygram_background_others", true); }
+    public static void setShowOthers(int account, boolean show) { BygramPreferences.setBoolean(account, "bygram_background_others", show); }
 
     public static void save(long userId, Uri uri, boolean remove, boolean privateBackground, boolean stretch, SaveCallback callback) {
         save(userId, uri, remove, privateBackground, stretch, true, callback);
@@ -167,7 +167,7 @@ public final class BygramProfileBackground {
     }
 
     public static void load(long currentUser, long profile, Utilities.Callback<Background> callback) {
-        if (profile <= 0 || currentUser != profile && !showOthers()) {
+        if (profile <= 0 || currentUser != profile && !showOthers(currentUser)) {
             callback.run(null);
             return;
         }

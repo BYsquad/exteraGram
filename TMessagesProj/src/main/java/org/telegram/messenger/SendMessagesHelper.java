@@ -3889,7 +3889,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                 req.data = data;
             }
             List<String> finalKeys = keys;
-            boolean readOnAction = BygramGhostMode.shouldReadOnActions();
+            boolean readOnAction = BygramGhostMode.shouldReadOnActions(currentAccount);
             long userId = getUserConfig().getClientUserId();
             getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                 waitingForCallback.remove(key);
@@ -4396,7 +4396,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                         req.flags |= 1;
                         req.data = button.getData();
                     }
-                    final boolean readOnAction = BygramGhostMode.shouldReadOnActions();
+                    final boolean readOnAction = BygramGhostMode.shouldReadOnActions(currentAccount);
                     final long userId = getUserConfig().getClientUserId();
                     getConnectionsManager().sendRequest(req, (response, error) -> {
                         requestDelegate.run(response, error);

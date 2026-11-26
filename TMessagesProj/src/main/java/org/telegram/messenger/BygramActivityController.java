@@ -22,7 +22,7 @@ import java.util.Map;
 
 public final class BygramActivityController {
     private static final String ENDPOINT = "https://byxarek.site/TEST-PROJECT/BYgram/api/";
-    private static final long ACTIVITY_CACHE_MS = 7_000L;
+    public static final long ACTIVITY_REFRESH_MS = 7_000L;
     private static final long ACTIVITY_HEARTBEAT_MS = 7_000L;
 
     public interface Callback { void run(String activity); }
@@ -58,29 +58,32 @@ public final class BygramActivityController {
             if (type == BygramActivitySettings.ACTIVITY_DIALOGS) return LocaleController.getString(R.string.BygramActivityDialogs);
             if (type == BygramActivitySettings.ACTIVITY_CHAT && peerKind == PEER_BOT) return LocaleController.formatString(R.string.BygramActivityBot, peerName);
             if (type == BygramActivitySettings.ACTIVITY_CHAT && peerKind == PEER_GROUP) return LocaleController.formatString(R.string.BygramActivityGroup, peerName);
-            if (peerKind == PEER_CHANNEL) return LocaleController.formatString(R.string.BygramActivityChannel, peerName);
             if (type == BygramActivitySettings.ACTIVITY_PROFILE) return LocaleController.formatString(R.string.BygramActivityProfile, peerName);
+            if (peerKind == PEER_CHANNEL) return LocaleController.formatString(R.string.BygramActivityChannel, peerName);
             return LocaleController.formatString(R.string.BygramViewingChat, peerName);
         }
     }
     private static final class OwnActivity {
+        final long userId;
         final int type;
         final long peerId;
         final String peerName;
         final int peerKind;
-        OwnActivity(int type, long peerId, String peerName, int peerKind) { this.type = type; this.peerId = peerId; this.peerName = peerName; this.peerKind = peerKind; }
+        OwnActivity(long userId, int type, long peerId, String peerName, int peerKind) { this.userId = userId; this.type = type; this.peerId = peerId; this.peerName = peerName; this.peerKind = peerKind; }
     }
     private static final class CachedActivity {
         final ActivityInfo info;
         final long loadedAt;
-        CachedActivity(ActivityInfo info) { this.info = info; this.loadedAt = System.currentTimeMillis(); }
+        CachedActivity(ActivityInfo info) { this.info = info; this.loadedAt = android.os.SystemClock.elapsedRealtime(); }
     }
     private static final OwnActivity[] ownActivities = new OwnActivity[UserConfig.MAX_ACCOUNT_COUNT];
     private static final Map<String, CachedActivity> activityCache = new HashMap<>();
-    private static final Map<Integer, Set<Long>> pendingActivities = new HashMap<>();
-    private static final Map<String, ArrayList<Runnable>> activityCallbacks = new HashMap<>();
+    private static final Map<Long, PendingActivityBatch> pendingActivities = new HashMap<>();
+    private static final Map<String, Set<Runnable>> activityCallbacks = new HashMap<>();
     private static final Map<Long, ArrayList<Utilities.Callback<Boolean>>> sessionCallbacks = new HashMap<>();
     private static final Set<Long> viewersSyncing = new HashSet<>();
+    private record PendingActivityBatch(int account, Set<Long> ids) {}
+
     private static boolean activityFlushScheduled;
     private static boolean heartbeatScheduled;
     private static final Runnable heartbeat = new Runnable() {
@@ -188,7 +191,7 @@ public final class BygramActivityController {
         if (type != BygramActivitySettings.ACTIVITY_DIALOGS && title.isEmpty()) return;
         int peerKind = user != null ? (user.bot ? PEER_BOT : PEER_USER)
                 : chat != null ? (ChatObject.isChannelAndNotMegaGroup(chat) ? PEER_CHANNEL : PEER_GROUP) : 0;
-        ownActivities[account] = new OwnActivity(type, dialogId, title, peerKind);
+        ownActivities[account] = new OwnActivity(selfId, type, dialogId, title, peerKind);
         sendActivity(account);
         scheduleHeartbeat();
     }
@@ -203,8 +206,15 @@ public final class BygramActivityController {
         OwnActivity activity = ownActivities[account];
         long selfId = UserConfig.getInstance(account).getClientUserId();
         if (activity == null) return;
-        if (selfId <= 0 || !BygramActivitySettings.isActivityEnabled(account)) { ownActivities[account] = null; return; }
+        if (selfId != activity.userId || !BygramActivitySettings.isActivityEnabled(account)) {
+            ownActivities[account] = null;
+            return;
+        }
         if (viewersDirty(selfId)) { syncViewers(account); return; }
+        if (BygramActivitySettings.getActivityPermissions(account).isEmpty()) {
+            clear(account);
+            return;
+        }
         if (!hasAccess(account, () -> sendActivity(account))) return;
         request(selfId, json("action", "update", "activity_type", activity.type,
                 "peer_id", activity.peerId, "peer_name", activity.peerName, "peer_kind", activity.peerKind), true, null);
@@ -232,15 +242,23 @@ public final class BygramActivityController {
     private static void syncViewers(int account) {
         long userId = UserConfig.getInstance(account).getClientUserId();
         if (userId <= 0) return;
-        if (!hasAccess(account, () -> syncViewers(account))) return;
         if (!viewersSyncing.add(userId)) return;
+        if (!hasSession(userId)) {
+            ensureSession(account, ready -> {
+                viewersSyncing.remove(userId);
+                if (ready && UserConfig.getInstance(account).getClientUserId() == userId) syncViewers(account);
+            });
+            return;
+        }
         JSONArray viewers = viewerPayload(account);
         String sent = viewers.toString();
         request(userId, json("action", "viewers", "viewers", viewers), true, response -> {
             viewersSyncing.remove(userId);
             if (UserConfig.getInstance(account).getClientUserId() != userId) return;
             if (response == null || !response.optBoolean("ok")) {
-                AndroidUtilities.runOnUIThread(() -> syncViewers(account), ACTIVITY_HEARTBEAT_MS);
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (UserConfig.getInstance(account).getClientUserId() == userId && viewersDirty(userId)) syncViewers(account);
+                }, ACTIVITY_HEARTBEAT_MS);
                 return;
             }
             if (!sent.equals(viewerPayload(account).toString())) {
@@ -255,7 +273,7 @@ public final class BygramActivityController {
     public static void clear(int account) {
         ownActivities[account] = null;
         long userId = UserConfig.getInstance(account).getClientUserId();
-        if (userId <= 0 || !hasAccess(account, () -> clear(account))) return;
+        if (userId <= 0 || !hasSession(userId)) return;
         request(userId, json("action", "clear"), true, null);
     }
 
@@ -277,23 +295,29 @@ public final class BygramActivityController {
 
     public static void get(int account, long ownerId, Callback callback) {
         long userId = UserConfig.getInstance(account).getClientUserId();
-        if (ownerId <= 0) { callback.run(null); return; }
-        if (!hasAccess(account, () -> get(account, ownerId, callback))) return;
-        request(userId, json("action", "activity_get", "owner_id", ownerId), true, response -> {
-            if (response == null || !response.optBoolean("ok")) return;
-            ActivityInfo info = parseActivity(response);
-            callback.run(info == null ? null : info.text());
+        if (ownerId <= 0 || userId <= 0) { callback.run(null); return; }
+        ensureSession(account, ready -> {
+            if (!ready) { callback.run(null); return; }
+            request(userId, json("action", "activity_get", "owner_id", ownerId), true, response -> {
+                ActivityInfo info = UserConfig.getInstance(account).getClientUserId() == userId
+                        && response != null && response.optBoolean("ok") ? parseActivity(response) : null;
+                callback.run(info == null ? null : info.text());
+            });
         });
     }
 
     public static ActivityInfo getCachedActivity(int account, long ownerId, Runnable callback) {
-        if (ownerId <= 0) return null;
-        String key = account + ":" + ownerId;
+        long userId = UserConfig.getInstance(account).getClientUserId();
+        if (ownerId <= 0 || userId <= 0) return null;
+        String key = userId + ":" + ownerId;
         CachedActivity cached = activityCache.get(key);
-        if (cached != null && System.currentTimeMillis() - cached.loadedAt < ACTIVITY_CACHE_MS) return cached.info;
-        pendingActivities.computeIfAbsent(account, unused -> new HashSet<>()).add(ownerId);
-        if (callback != null) activityCallbacks.computeIfAbsent(key, unused -> new ArrayList<>()).add(callback);
-        if (!activityFlushScheduled) {
+        if (cached != null && android.os.SystemClock.elapsedRealtime() - cached.loadedAt < ACTIVITY_REFRESH_MS) return cached.info;
+        if (!activityCallbacks.containsKey(key)) {
+            pendingActivities.computeIfAbsent(userId, unused -> new PendingActivityBatch(account, new HashSet<>())).ids().add(ownerId);
+        }
+        Set<Runnable> callbacks = activityCallbacks.computeIfAbsent(key, unused -> new HashSet<>());
+        if (callback != null) callbacks.add(callback);
+        if (!activityFlushScheduled && !pendingActivities.isEmpty()) {
             activityFlushScheduled = true;
             AndroidUtilities.runOnUIThread(BygramActivityController::flushActivities, 150);
         }
@@ -302,45 +326,43 @@ public final class BygramActivityController {
 
     private static void flushActivities() {
         activityFlushScheduled = false;
-        HashMap<Integer, Set<Long>> batches = new HashMap<>(pendingActivities);
+        HashMap<Long, PendingActivityBatch> batches = new HashMap<>(pendingActivities);
         pendingActivities.clear();
-        for (Map.Entry<Integer, Set<Long>> batch : batches.entrySet()) {
-            int account = batch.getKey();
-            ArrayList<Long> ids = new ArrayList<>(batch.getValue());
-            if (ids.isEmpty()) continue;
-            if (!hasAccess(account, () -> {
-                pendingActivities.computeIfAbsent(account, unused -> new HashSet<>()).addAll(ids);
-                if (!activityFlushScheduled) {
-                    activityFlushScheduled = true;
-                    AndroidUtilities.runOnUIThread(BygramActivityController::flushActivities, 150);
-                }
-            })) continue;
-            long userId = UserConfig.getInstance(account).getClientUserId();
-            request(userId, json("action", "activities", "owner_ids", new JSONArray(ids)), true, response -> {
-                if (response == null || !response.optBoolean("ok")) {
-                    for (long id : ids) {
-                        String key = account + ":" + id;
-                        CachedActivity cached = activityCache.get(key);
-                        activityCache.put(key, new CachedActivity(cached != null ? cached.info : null));
-                        ArrayList<Runnable> callbacks = activityCallbacks.remove(key);
-                        if (callbacks != null) for (Runnable callback : callbacks) callback.run();
-                    }
+        for (Map.Entry<Long, PendingActivityBatch> batch : batches.entrySet()) {
+            long userId = batch.getKey();
+            int account = batch.getValue().account();
+            ArrayList<Long> ids = new ArrayList<>(batch.getValue().ids());
+            if (UserConfig.getInstance(account).getClientUserId() != userId) {
+                finishActivityBatch(account, userId, ids, null);
+                continue;
+            }
+            ensureSession(account, ready -> {
+                if (!ready) {
+                    finishActivityBatch(account, userId, ids, null);
                     return;
                 }
-                HashMap<Long, ActivityInfo> loaded = new HashMap<>();
-                JSONArray values = response.optJSONArray("activities");
-                if (values != null) for (int i = 0; i < values.length(); i++) {
-                    JSONObject value = values.optJSONObject(i);
-                    ActivityInfo info = parseActivity(value);
-                    if (value != null && info != null) loaded.put(value.optLong("owner_id"), info);
-                }
-                for (long id : ids) {
-                    String key = account + ":" + id;
-                    activityCache.put(key, new CachedActivity(loaded.get(id)));
-                    ArrayList<Runnable> callbacks = activityCallbacks.remove(key);
-                    if (callbacks != null) for (Runnable callback : callbacks) callback.run();
-                }
+                request(userId, json("action", "activities", "owner_ids", new JSONArray(ids)), true,
+                        response -> finishActivityBatch(account, userId, ids, response));
             });
+        }
+    }
+
+    private static void finishActivityBatch(int account, long userId, ArrayList<Long> ids, JSONObject response) {
+        boolean sameAccount = UserConfig.getInstance(account).getClientUserId() == userId;
+        HashMap<Long, ActivityInfo> loaded = new HashMap<>();
+        if (sameAccount && response != null && response.optBoolean("ok")) {
+            JSONArray values = response.optJSONArray("activities");
+            if (values != null) for (int i = 0; i < values.length(); i++) {
+                JSONObject value = values.optJSONObject(i);
+                ActivityInfo info = parseActivity(value);
+                if (value != null && info != null) loaded.put(value.optLong("owner_id"), info);
+            }
+        }
+        for (long id : ids) {
+            String key = userId + ":" + id;
+            if (sameAccount) activityCache.put(key, new CachedActivity(loaded.get(id)));
+            Set<Runnable> callbacks = activityCallbacks.remove(key);
+            if (sameAccount && callbacks != null) for (Runnable callback : callbacks) callback.run();
         }
     }
 

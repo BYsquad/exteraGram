@@ -928,7 +928,7 @@ public class LocationController extends BaseController implements NotificationCe
     }
 
     public void markLiveLoactionsAsRead(long dialogId) {
-        boolean blockReadReceipt = BygramGhostMode.shouldBlockReadReceipts();
+        boolean blockReadReceipt = BygramGhostMode.shouldBlockReadReceipts(currentAccount);
         if (DialogObject.isEncryptedDialog(dialogId)) {
             return;
         }

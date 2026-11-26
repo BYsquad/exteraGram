@@ -77,6 +77,7 @@ import org.telegram.messenger.utils.tlutils.TLKeyboardHelper;
 import org.telegram.messenger.utils.tlutils.TlUtils;
 import org.telegram.messenger.voip.VoIPGroupNotification;
 import org.telegram.tgnet.ConnectionsManager;
+import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_account;
 import org.telegram.tgnet.tl.TL_keyboard;
@@ -109,7 +110,8 @@ import java.util.function.Consumer;
 
 public class NotificationsController extends BaseController implements NotificationCenter.NotificationCenterDelegate {
     public void notifyBygramDeletion(long dialogId, int messageId, long topicId, boolean wholeChat) {
-        if (!BygramSpyMode.getBoolean(BygramSpyMode.SPY_NOTIFY_DELETED)) return;
+        if (!BygramSpyMode.hasDeletionNotifications(currentAccount)
+                || !DialogObject.isUserDialog(dialogId) && !DialogObject.isChatDialog(dialogId)) return;
         TLRPC.Dialog dialog = getMessagesController().getDialog(dialogId);
         if (dialog == null) {
             getMessagesStorage().getDialogFolderId(dialogId, folderId -> {
@@ -121,16 +123,39 @@ public class NotificationsController extends BaseController implements Notificat
     }
 
     private void showBygramDeletion(long dialogId, int messageId, long topicId, boolean wholeChat) {
+        TLObject peer = getMessagesController().getUserOrChat(dialogId);
+        if (peer != null) {
+            showBygramDeletion(dialogId, messageId, topicId, wholeChat, peer);
+        } else {
+            MessagesStorage storage = getMessagesStorage();
+            storage.getStorageQueue().postRunnable(() -> {
+                TLObject loadedPeer = DialogObject.isUserDialog(dialogId)
+                        ? storage.getUser(dialogId) : storage.getChat(-dialogId);
+                AndroidUtilities.runOnUIThread(() -> showBygramDeletion(dialogId, messageId, topicId, wholeChat, loadedPeer));
+            });
+        }
+    }
+
+    private void showBygramDeletion(long dialogId, int messageId, long topicId, boolean wholeChat, TLObject peer) {
         TLRPC.Dialog dialog = getMessagesController().getDialog(dialogId);
-        if (!BygramSpyMode.getBoolean(BygramSpyMode.SPY_NOTIFY_DELETED)
-                || dialog != null && dialog.folder_id == 1
+        if (dialog != null && dialog.folder_id == 1
                 || BygramChatPrivacy.hidesNotification(currentAccount, dialogId)) return;
+        final BygramSpyMode.DeletionNotification type;
+        if (peer instanceof TLRPC.User user) {
+            type = user.bot ? BygramSpyMode.DeletionNotification.BOT : BygramSpyMode.DeletionNotification.PRIVATE;
+        } else if (peer instanceof TLRPC.Chat chat) {
+            type = chat.broadcast || ChatObject.isMonoForum(chat)
+                    ? BygramSpyMode.DeletionNotification.CHANNEL : BygramSpyMode.DeletionNotification.GROUP;
+        } else {
+            return;
+        }
+        if (!type.isEnabled(currentAccount)) return;
         android.content.Context context = ApplicationLoader.applicationContext;
         android.app.NotificationManager manager = (android.app.NotificationManager) context.getSystemService(android.content.Context.NOTIFICATION_SERVICE);
         if (manager == null) return;
-        String channel = "bygram_spy_deletions";
-        if (android.os.Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new android.app.NotificationChannel(channel,
-                LocaleController.getString(R.string.BygramSpyMode), android.app.NotificationManager.IMPORTANCE_DEFAULT));
+        String title = LocaleController.formatString(R.string.BygramSpyNotificationTitle, LocaleController.getString(type.title));
+        if (android.os.Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new android.app.NotificationChannel(type.channelId,
+                title, android.app.NotificationManager.IMPORTANCE_DEFAULT));
         android.content.Intent intent = new android.content.Intent(context, org.telegram.ui.LaunchActivity.class);
         intent.setAction("com.tmessages.openchat.bygram.spy." + currentAccount + "." + dialogId + "." + wholeChat + "." + messageId);
         intent.putExtra("currentAccount", currentAccount);
@@ -138,17 +163,17 @@ public class NotificationsController extends BaseController implements Notificat
         if (DialogObject.isUserDialog(dialogId)) intent.putExtra("userId", dialogId);
         else if (DialogObject.isChatDialog(dialogId)) {
             intent.putExtra("chatId", -dialogId);
-            if (topicId > 0 && ChatObject.isForum(getMessagesController().getChat(-dialogId))) {
+            if (topicId > 0 && peer instanceof TLRPC.Chat chat && ChatObject.isForum(chat)) {
                 intent.putExtra("topicId", topicId);
             }
         } else return;
         intent.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP);
         android.app.PendingIntent pending = android.app.PendingIntent.getActivity(context, 0, intent,
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
-        String name = DialogObject.getName(currentAccount, dialogId);
-        android.app.Notification notification = new androidx.core.app.NotificationCompat.Builder(context, channel)
-                .setSmallIcon(R.drawable.notification).setContentTitle(LocaleController.getString(R.string.BygramSpyMode))
-                .setContentText(LocaleController.formatString(wholeChat ? R.string.BygramSpyChatDeleted : R.string.BygramMessageDeletedInChat, name))
+        String name = DialogObject.getName(peer);
+        android.app.Notification notification = new androidx.core.app.NotificationCompat.Builder(context, type.channelId)
+                .setSmallIcon(R.drawable.notification).setContentTitle(title)
+                .setContentText(LocaleController.formatString(wholeChat ? R.string.BygramSpyChatDeleted : type.message, name))
                 .setContentIntent(pending).setAutoCancel(true).setOnlyAlertOnce(true).build();
         try { manager.notify("bygram_spy_" + currentAccount + "_" + dialogId, wholeChat ? -1 : messageId, notification); }
         catch (SecurityException error) { FileLog.e(error); }

@@ -7,7 +7,7 @@ import android.view.View
 import com.exteragram.messenger.config.floating
 import org.telegram.messenger.BygramProfileBackground
 import org.telegram.messenger.LocaleController.getString
-import org.telegram.messenger.MessagesController
+import org.telegram.messenger.BygramPreferences
 import org.telegram.messenger.R
 import org.telegram.ui.ActionBar.AlertDialog
 import org.telegram.ui.Components.UItem
@@ -23,7 +23,7 @@ class BygramCustomizationActivity(private val page: Int = 0) : BasePreferencesAc
         const val SNOW_DENSITY = "bygram_snow_density"
     }
 
-    private val prefs get() = MessagesController.getGlobalMainSettings()
+    private val prefs get() = BygramPreferences.preferences()
     private val userId get() = userConfig.clientUserId
     private var saving = false
     private var checkedPublicBackground = false
@@ -69,12 +69,12 @@ class BygramCustomizationActivity(private val page: Int = 0) : BasePreferencesAc
                         items.add(UItem.asShadow())
                         items.add(UItem.asHeader(getString(R.string.BygramWinterSettings)))
                     }
-                    items.add(UItem.asCheck(index + 1, getString(title)).setChecked(prefs.getBoolean(key, key == NAVIGATION && floating())))
+                    items.add(UItem.asCheck(index + 1, getString(title)).setChecked(BygramPreferences.getBoolean(currentAccount, key, key == NAVIGATION && floating())))
                 }
-                val density = prefs.getInt(SNOW_DENSITY, 35).coerceIn(10, 100)
+                val density = prefs.getInt(BygramPreferences.key(currentAccount, SNOW_DENSITY), 35).coerceIn(10, 100)
                 items.add(UItem.asHeader(getString(R.string.BygramSnowDensity)))
                 items.add(UItem.asIntSlideView(0, 10, density, 100, { "$it%" }) { value ->
-                    prefs.edit().putInt(SNOW_DENSITY, value).apply()
+                    prefs.edit().putInt(BygramPreferences.key(currentAccount, SNOW_DENSITY), value).apply()
                     parentActivity?.window?.decorView?.invalidate()
                 })
             }
@@ -85,7 +85,7 @@ class BygramCustomizationActivity(private val page: Int = 0) : BasePreferencesAc
                 items.add(UItem.asShadow())
                 items.add(UItem.asHeader(getString(R.string.Appearance)))
                 items.add(UItem.asCheck(3, getString(R.string.BygramProfileBackgroundPrivate)).setChecked(BygramProfileBackground.isPrivate(userId)))
-                items.add(UItem.asCheck(4, getString(R.string.BygramProfileBackgroundOthers)).setChecked(BygramProfileBackground.showOthers()))
+                items.add(UItem.asCheck(4, getString(R.string.BygramProfileBackgroundOthers)).setChecked(BygramProfileBackground.showOthers(userId)))
                 items.add(UItem.asCheck(5, getString(R.string.BygramProfileBackgroundStretch)).setChecked(BygramProfileBackground.isStretched(userId)))
             }
         }
@@ -100,7 +100,7 @@ class BygramCustomizationActivity(private val page: Int = 0) : BasePreferencesAc
             1 -> {
                 val setting = options.getOrNull(item.id - 1)
                 if (setting != null) {
-                    prefs.edit().putBoolean(setting.first, !prefs.getBoolean(setting.first, setting.first == NAVIGATION && floating())).apply()
+                    BygramPreferences.setBoolean(currentAccount, setting.first, !BygramPreferences.getBoolean(currentAccount, setting.first, setting.first == NAVIGATION && floating()))
                     refreshPreferenceItems()
                     parentActivity?.window?.decorView?.invalidate()
                 }
@@ -110,7 +110,7 @@ class BygramCustomizationActivity(private val page: Int = 0) : BasePreferencesAc
                 2 -> save(null, true)
                 3 -> save(null, privateBackground = !BygramProfileBackground.isPrivate(userId))
                 4 -> {
-                    BygramProfileBackground.setShowOthers(!BygramProfileBackground.showOthers())
+                    BygramProfileBackground.setShowOthers(currentAccount, !BygramProfileBackground.showOthers(userId))
                     refreshPreferenceItems()
                 }
                 5 -> save(null, stretch = !BygramProfileBackground.isStretched(userId))

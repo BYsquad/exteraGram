@@ -997,7 +997,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 presentSettingFragment(new MainPreferencesActivity());
                 break;
             case -2:
-                presentSettingFragment(new BygramPreferencesActivity());
+                BygramPreferencesActivity bygram = new BygramPreferencesActivity();
+                bygram.setCurrentAccount(currentAccount);
+                presentSettingFragment(bygram);
                 break;
             case 1:
                 presentSettingFragment(new UserInfoActivity());

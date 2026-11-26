@@ -4,6 +4,7 @@ import android.content.Context
 import android.view.View
 import com.exteragram.messenger.preferences.components.HeaderSettingsCell
 import org.telegram.messenger.AndroidUtilities
+import org.telegram.messenger.BygramUpdates
 import org.telegram.messenger.LocaleController.getString
 import org.telegram.messenger.R
 import org.telegram.messenger.browser.Browser
@@ -17,7 +18,7 @@ import org.telegram.ui.LaunchActivity
 class BygramPreferencesActivity : BasePreferencesActivity() {
 
     private enum class Option {
-        GHOST, HIDDEN, PROTECTED, SPY, ACTIVITY, PROFILE_VIEWS, CUSTOMIZATION, SOURCE_CODE, UPSTREAM, OTHER, HEADER
+        GHOST, HIDDEN, PROTECTED, SPY, ACTIVITY, PROFILE_VIEWS, CUSTOMIZATION, SOURCE_CODE, UPSTREAM, OTHER, HEADER, UPDATE
     }
 
     private lateinit var header: HeaderSettingsCell
@@ -38,8 +39,19 @@ class BygramPreferencesActivity : BasePreferencesActivity() {
 
     override fun getTitle(): String = getString(R.string.BygramPreferences)
 
+    override fun onResume() {
+        super.onResume()
+        val previousUrl = BygramUpdates.getDownloadUrl()
+        BygramUpdates.check {
+            if (parentActivity != null && BygramUpdates.getDownloadUrl() != previousUrl) refreshPreferenceItems()
+        }
+    }
+
     override fun fillItems(items: ArrayList<UItem>, adapter: UniversalAdapter) {
         items.add(UItem.asCustomShadow(header, 198).setId(Option.HEADER.ordinal + 1))
+        if (BygramUpdates.getDownloadUrl() != null) {
+            items.add(uButton(Option.UPDATE, getString(R.string.BygramUpdateButton), R.drawable.msg_download))
+        }
 
         items.add(UItem.asHeader(getString(R.string.Categories)))
         items.add(uButton(Option.CUSTOMIZATION, getString(R.string.BygramCustomization), R.drawable.msg_theme))
@@ -64,14 +76,15 @@ class BygramPreferencesActivity : BasePreferencesActivity() {
     override fun onClick(item: UItem, view: View, position: Int, x: Float, y: Float) {
         when (Option.entries.getOrNull(item.id - 1) ?: return) {
             Option.HEADER -> (parentActivity as? LaunchActivity)?.checkAppUpdate(true)
-            Option.GHOST -> presentFragment(BygramGhostPreferencesActivity())
+            Option.UPDATE -> BygramUpdates.getDownloadUrl()?.let { Browser.openUrlInSystemBrowser(parentActivity, it) }
+            Option.GHOST -> presentFragment(BygramGhostPreferencesActivity().apply { setCurrentAccount(this@BygramPreferencesActivity.currentAccount) })
             Option.HIDDEN -> BygramPrivateChatsActivity.openHidden(this)
-            Option.PROTECTED -> presentFragment(BygramPrivateChatsActivity(false))
-            Option.SPY -> presentFragment(BygramSpyPreferencesActivity())
-            Option.ACTIVITY -> presentFragment(BygramActivityPreferencesActivity())
-            Option.PROFILE_VIEWS -> presentFragment(BygramProfileViewsPreferencesActivity())
+            Option.PROTECTED -> presentFragment(BygramPrivateChatsActivity(false).apply { setCurrentAccount(this@BygramPreferencesActivity.currentAccount) })
+            Option.SPY -> presentFragment(BygramSpyPreferencesActivity().apply { setCurrentAccount(this@BygramPreferencesActivity.currentAccount) })
+            Option.ACTIVITY -> presentFragment(BygramActivityPreferencesActivity().apply { setCurrentAccount(this@BygramPreferencesActivity.currentAccount) })
+            Option.PROFILE_VIEWS -> presentFragment(BygramProfileViewsPreferencesActivity().apply { setCurrentAccount(this@BygramPreferencesActivity.currentAccount) })
             Option.CUSTOMIZATION -> presentFragment(BygramCustomizationActivity().apply { setCurrentAccount(this@BygramPreferencesActivity.currentAccount) })
-            Option.OTHER -> presentFragment(BygramOtherPreferencesActivity())
+            Option.OTHER -> presentFragment(BygramOtherPreferencesActivity().apply { setCurrentAccount(this@BygramPreferencesActivity.currentAccount) })
             Option.SOURCE_CODE -> Browser.openUrl(parentActivity, "https://github.com/BYsquad/exteraGram/tree/bygram/exteragram-base")
             Option.UPSTREAM -> Browser.openUrl(parentActivity, "https://github.com/exteraSquad/exteraGram")
         }

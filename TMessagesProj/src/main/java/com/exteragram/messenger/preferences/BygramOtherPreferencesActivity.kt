@@ -17,12 +17,12 @@ class BygramOtherPreferencesActivity : BasePreferencesActivity() {
     override fun fillItems(items: ArrayList<UItem>, adapter: UniversalAdapter) {
         items.add(UItem.asHeader(getString(R.string.DataSettings)))
         items.add(uCheck(Option.STATISTICS, getString(R.string.BygramUsageStatistics),
-            BygramDeviceReporter.isEnabled(), linkAlias = "bygramUsageStatistics"))
+            BygramDeviceReporter.isEnabled(currentAccount), linkAlias = "bygramUsageStatistics"))
         items.add(UItem.asShadow(getString(R.string.BygramUsageStatisticsInfo)))
     }
 
     override fun onClick(item: UItem, view: View, position: Int, x: Float, y: Float) {
         if (item.id != Option.STATISTICS.ordinal + 1) return
-        toggleBooleanSettingAndRefresh(item, BygramDeviceReporter::setEnabled)
+        toggleBooleanSettingAndRefresh(item) { BygramDeviceReporter.setEnabled(currentAccount, it) }
     }
 }

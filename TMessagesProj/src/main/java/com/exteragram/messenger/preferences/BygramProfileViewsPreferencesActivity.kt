@@ -90,6 +90,8 @@ class BygramProfileViewsPreferencesActivity : BasePreferencesActivity() {
 
     private var visits: List<Visit> = emptyList()
     private var updating = false
+    private var loading = false
+    private var loadFailed = false
 
     override fun wrapSettingsText() = true
 
@@ -101,9 +103,19 @@ class BygramProfileViewsPreferencesActivity : BasePreferencesActivity() {
     }
 
     private fun loadVisits() {
-        if (!BygramAccountService.profileViewsEnabled(currentAccount)) return
+        if (loading || updating || !BygramAccountService.canRefreshProfileViews(currentAccount)) return
+        loading = true
+        loadFailed = false
+        if (parentLayout != null) refreshPreferenceItems()
         BygramAccountService.profileViewsRequest(currentAccount, JSONObject().put("action", "profile_views_list")) { response, _ ->
-            if (response?.optBoolean("ok") != true || parentLayout == null) return@profileViewsRequest
+            loading = false
+            if (parentLayout == null) return@profileViewsRequest
+            if (response?.optBoolean("ok") != true) {
+                visits = emptyList()
+                loadFailed = true
+                refreshPreferenceItems()
+                return@profileViewsRequest
+            }
             val data = response.optJSONArray("views")
             visits = (0 until (data?.length() ?: 0)).mapNotNull { index ->
                 data?.optJSONObject(index)?.let {
@@ -122,7 +134,13 @@ class BygramProfileViewsPreferencesActivity : BasePreferencesActivity() {
         items.add(UItem.asShadow(getString(R.string.BygramProfileViewsInfo)))
         if (!enabled) return
         items.add(UItem.asHeader(getString(R.string.BygramProfileViewsRecent)))
-        if (visits.isEmpty()) items.add(UItem.asShadow(getString(R.string.BygramProfileViewsEmpty)))
+        if (visits.isEmpty()) {
+            items.add(UItem.asShadow(getString(when {
+                loading -> R.string.Loading
+                loadFailed -> R.string.ErrorOccurred
+                else -> R.string.BygramProfileViewsEmpty
+            })))
+        }
         for ((index, visit) in visits.withIndex()) {
             items.add(UItem.ofFactory(VisitFactory::class.java).setId(index + 2).apply { `object` = visit })
         }
@@ -132,13 +150,15 @@ class BygramProfileViewsPreferencesActivity : BasePreferencesActivity() {
         if (item.id != 1) {
             val visit = visits.getOrNull(item.id - 2) ?: return
             if (messagesController.getUser(visit.id) != null) {
-                presentFragment(ProfileActivity(Bundle().apply { putLong("user_id", visit.id) }))
+                presentFragment(ProfileActivity(Bundle().apply { putLong("user_id", visit.id) }).apply {
+                    setCurrentAccount(this@BygramProfileViewsPreferencesActivity.currentAccount)
+                })
             } else if (visit.username.isNotEmpty()) {
                 messagesController.openByUserName(visit.username, this, 0, null)
             }
             return
         }
-        if (updating) return
+        if (updating || loading) return
         updating = true
         val request = JSONObject().put("action", "profile_views_set")
             .put("enabled", !BygramAccountService.profileViewsEnabled(currentAccount))
@@ -155,8 +175,8 @@ class BygramProfileViewsPreferencesActivity : BasePreferencesActivity() {
                     .setNegativeButton(getString(R.string.Cancel), null).create())
             } else if (response?.optBoolean("ok") == true) {
                 visits = emptyList()
-                refreshPreferenceItems()
                 loadVisits()
+                refreshPreferenceItems()
             } else {
                 showDialog(AlertDialog.Builder(context).setMessage(getString(R.string.ErrorOccurred))
                     .setPositiveButton(getString(R.string.OK), null).create())

@@ -7356,6 +7356,19 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
+    private final Runnable refreshBygramActivity = this::refreshBygramActivity;
+
+    private void refreshBygramActivity() {
+        if (isPaused || viewPages == null) return;
+        for (ViewPage page : viewPages) {
+            if (page == null || page.listView == null || page.getVisibility() != View.VISIBLE) continue;
+            for (int i = 0; i < page.listView.getChildCount(); i++) {
+                if (page.listView.getChildAt(i) instanceof DialogCell cell) cell.refreshBygramActivity();
+            }
+        }
+        AndroidUtilities.runOnUIThread(refreshBygramActivity, BygramActivityController.ACTIVITY_REFRESH_MS);
+    }
+
     private final Runnable refreshBygramFlames = this::refreshBygramFlames;
 
     private void refreshBygramFlames() {
@@ -7376,14 +7389,17 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     public void onResume() {
         super.onResume();
         AndroidUtilities.cancelRunOnUIThread(refreshBygramFlames);
-        if (!onlySelect) refreshBygramFlames();
+        if (!onlySelect) {
+            refreshBygramFlames();
+            AndroidUtilities.cancelRunOnUIThread(refreshBygramActivity);
+            AndroidUtilities.runOnUIThread(refreshBygramActivity, BygramActivityController.ACTIVITY_REFRESH_MS);
+        }
         if (!onlySelect && folderId == 0 && communityId == 0) {
             BygramActivityController.setCurrentActivity(currentAccount, BygramActivitySettings.ACTIVITY_DIALOGS, 0, null, null);
         }
-        android.content.SharedPreferences prefs = MessagesController.getGlobalMainSettings();
-        bygramCollapseFolders = prefs.getBoolean("bygram_scroll_folders", false);
-        bygramCollapseHeader = prefs.getBoolean("bygram_scroll_header", false);
-        bygramCollapseNavigation = prefs.getBoolean("bygram_scroll_navigation", BottomNavigationBar.floating());
+        bygramCollapseFolders = org.telegram.messenger.BygramPreferences.getBoolean(currentAccount, "bygram_scroll_folders", false);
+        bygramCollapseHeader = org.telegram.messenger.BygramPreferences.getBoolean(currentAccount, "bygram_scroll_header", false);
+        bygramCollapseNavigation = org.telegram.messenger.BygramPreferences.getBoolean(currentAccount, "bygram_scroll_navigation", BottomNavigationBar.floating());
         updateBygramScrollChrome(false);
         updateFilterTabs(false, false);
         mainTabsHiddenByScroll = false;
@@ -7628,6 +7644,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     public void onPause() {
         super.onPause();
         AndroidUtilities.cancelRunOnUIThread(refreshBygramFlames);
+        AndroidUtilities.cancelRunOnUIThread(refreshBygramActivity);
         if (!onlySelect && folderId == 0 && communityId == 0) {
             BygramActivityController.clearCurrentActivity(currentAccount, BygramActivitySettings.ACTIVITY_DIALOGS, 0);
         }

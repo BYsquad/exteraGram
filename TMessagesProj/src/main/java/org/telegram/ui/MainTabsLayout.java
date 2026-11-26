@@ -398,7 +398,7 @@ public class MainTabsLayout extends AnimatedLinearLayout {
         }
 
         super.dispatchDraw(canvas);
-        bygramSnow.draw(this, canvas);
+        bygramSnow.draw(this, canvas, org.telegram.messenger.UserConfig.selectedAccount);
 
         if (drawTopDivider) {
             dividerPaint.setColor(Theme.getDividerColor(resourcesProvider));

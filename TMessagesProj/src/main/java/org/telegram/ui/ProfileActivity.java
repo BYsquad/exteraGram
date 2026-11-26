@@ -2912,7 +2912,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     }
                     finishFragment();
                 } else if (id == bygram_profile_views) {
-                    presentFragment(new BygramProfileViewsPreferencesActivity());
+                    BygramProfileViewsPreferencesActivity views = new BygramProfileViewsPreferencesActivity();
+                    views.setCurrentAccount(currentAccount);
+                    presentFragment(views);
                 } else if (id == block_contact) {
                     onBlockContactClicked(false);
                 } else if (id == add_contact) {
@@ -4913,7 +4915,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             } else if (position == exteraRow) {
                 presentFragment(new MainPreferencesActivity());
             } else if (position == bygramPreferencesRow) {
-                presentFragment(new BygramPreferencesActivity());
+                BygramPreferencesActivity bygram = new BygramPreferencesActivity();
+                bygram.setCurrentAccount(currentAccount);
+                presentFragment(bygram);
             } else if (position == notificationRow) {
                 presentFragment(new NotificationsSettingsActivity());
             } else if (position == privacyRow) {

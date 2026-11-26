@@ -93,6 +93,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 
 import com.exteragram.messenger.messageexport.ChatScreenshotExportBridge;
+import com.exteragram.messenger.preferences.BygramProfileViewsPreferencesActivity;
 import com.exteragram.messenger.ExteraConfig;
 import com.exteragram.messenger.export.ui.ExportProgressSheet;
 import com.exteragram.messenger.export.ui.ExportUiHelper;
@@ -560,7 +561,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                         || page instanceof ChatActivity chat && chat.getInstantCameraView() != null && chat.getInstantCameraView().isCameraReady()) {
                     return;
                 }
-                snow.draw(this, canvas);
+                snow.draw(this, canvas, currentAccount);
             }
         };
         drawerLayoutContainer.setActionBarLayout(actionBarLayout);
@@ -821,7 +822,6 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
         AndroidUtilities.enableEdgeToEdge(this);
 
-        checkAppUpdate(false);
         ExteraConfig.init();
 
         BackupAgent.requestBackup();
@@ -1714,6 +1714,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 }
             }
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.passcodeDismissed, view);
+            actionBarLayout.getView().post(() -> showBygramUpdate(false));
             try {
                 NotificationsController.getInstance(UserConfig.selectedAccount).showNotifications();
             } catch (Exception e) {
@@ -1765,6 +1766,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         int flags = intent.getFlags();
         String action = intent.getAction();
         final int[] intentAccount = new int[]{intent.getIntExtra("currentAccount", UserConfig.selectedAccount)};
+        final boolean openBygramProfileViews = BygramAccountService.OPEN_PROFILE_VIEWS.equals(action);
+        if (openBygramProfileViews && (intentAccount[0] < 0 || intentAccount[0] >= UserConfig.MAX_ACCOUNT_COUNT
+                || intent.getLongExtra(BygramAccountService.PROFILE_VIEWS_OWNER, 0) <= 0
+                || intent.getLongExtra(BygramAccountService.PROFILE_VIEWS_OWNER, 0)
+                        != UserConfig.getInstance(intentAccount[0]).getClientUserId())) return false;
         switchToAccount(intentAccount[0], true);
         final boolean isVoipIntent = action != null && action.equals("voip");
         final boolean isVoipAnswerIntent = action != null && action.equals("voip_answer");
@@ -3231,7 +3237,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 }
             }
 
-            if (push_story_id > 0) {
+            if (openBygramProfileViews) {
+                BygramProfileViewsPreferencesActivity fragment = new BygramProfileViewsPreferencesActivity();
+                fragment.setCurrentAccount(currentAccount);
+                pushOpened = getActionBarLayout().presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(true));
+            } else if (push_story_id > 0) {
                 NotificationsController.getInstance(intentAccount[0]).processSeenStoryReactions(UserConfig.getInstance(intentAccount[0]).getClientUserId(), push_story_id);
                 long storyDialogId = UserConfig.getInstance(currentAccount).getClientUserId();
                 if (push_user_id != 0) {
@@ -6332,16 +6342,22 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         return foundContacts;
     }
 
+    private long lastBygramUpdateCheck;
+    private boolean bygramUpdateShown;
+
     public void checkAppUpdate(boolean force) {
         checkAppUpdate(force, null);
     }
 
     public void checkAppUpdate(boolean force, Browser.Progress progress) {
-        if (!force && System.currentTimeMillis() - SharedConfig.lastUpdateCheckTime < TimeUnit.MINUTES.toMillis(30)) {
+        if (!force) {
+            showBygramUpdate(false);
+        }
+        long now = SystemClock.elapsedRealtime();
+        if (!force && lastBygramUpdateCheck != 0 && now - lastBygramUpdateCheck < TimeUnit.MINUTES.toMillis(30)) {
             return;
         }
-        SharedConfig.lastUpdateCheckTime = System.currentTimeMillis();
-        SharedConfig.saveConfig();
+        lastBygramUpdateCheck = now;
         if (progress != null) {
             progress.init();
         }
@@ -6349,21 +6365,34 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             if (progress != null) {
                 progress.end();
             }
-            BaseFragment fragment = getLastFragment();
-            if (fragment == null || isFinishing()) {
-                return;
-            }
-            if (success && BygramUpdates.isAvailable()) {
-                BulletinFactory.of(fragment).createSimpleBulletin(
-                        R.raw.chats_infotip,
-                        LocaleController.getString(R.string.BygramUpdateAvailable),
-                        LocaleController.getString(R.string.BygramDownloadUpdate),
-                        () -> Browser.openUrl(this, BygramUpdates.DOWNLOAD_URL)).show();
-            } else if (force) {
-                BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip,
-                        LocaleController.getString(success ? R.string.BygramUpdateCurrent : R.string.BygramUpdateFailed)).show();
+            if (!showBygramUpdate(force) && force && isResumed && !isFinishing()) {
+                BaseFragment fragment = getLastFragment();
+                if (BulletinFactory.canShowBulletin(fragment)) {
+                    BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip,
+                            LocaleController.getString(success ? R.string.BygramUpdateCurrent : R.string.BygramUpdateFailed)).show();
+                }
             }
         });
+    }
+
+    private boolean showBygramUpdate(boolean force) {
+        String url = BygramUpdates.getDownloadUrl();
+        if (url == null || !isResumed || isFinishing() || SharedConfig.isWaitingForPasscodeEnter
+                || !force && bygramUpdateShown) {
+            return false;
+        }
+        BaseFragment fragment = getLastFragment();
+        if (!BulletinFactory.canShowBulletin(fragment)) {
+            return false;
+        }
+        bygramUpdateShown = true;
+        BulletinFactory.of(fragment).createSimpleBulletin(
+                R.raw.chats_infotip,
+                LocaleController.getString(R.string.BygramUpdateAvailable),
+                LocaleController.getString(R.string.BygramDownloadUpdate),
+                Bulletin.DURATION_PROLONG,
+                () -> Browser.openUrlInSystemBrowser(this, url)).show();
+        return true;
     }
 
     public void checkAppUpdateOld(boolean force, Browser.Progress progress) {

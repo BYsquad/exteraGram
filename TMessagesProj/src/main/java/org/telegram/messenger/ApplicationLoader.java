@@ -200,8 +200,6 @@ public class ApplicationLoader extends Application implements Provider {
         applicationInited = true;
         NativeLoader.initNativeLibs(ApplicationLoader.applicationContext);
         Utilities.globalQueue.postRunnable(BygramSpyMode::pruneSpyData);
-        BygramActivitySettings.migrate();
-        AndroidUtilities.runOnUIThread(BygramDeviceReporter::report);
 
         try {
             LocaleController.getInstance(); //TODO improve
@@ -261,6 +259,10 @@ public class ApplicationLoader extends Application implements Provider {
         SharedPrefsHelper.init(applicationContext);
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) { //TODO improve account
             UserConfig.getInstance(a).loadConfig();
+        }
+        BygramPreferences.migrate();
+        AndroidUtilities.runOnUIThread(BygramDeviceReporter::report);
+        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             MessagesController.getInstance(a);
             if (a == 0) {
                 SharedConfig.pushStringStatus = "__FIREBASE_GENERATING_SINCE_" + ConnectionsManager.getInstance(a).getCurrentTime() + "__";

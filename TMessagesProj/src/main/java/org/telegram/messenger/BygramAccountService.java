@@ -30,6 +30,9 @@ import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.LaunchActivity;
 
 public final class BygramAccountService {
+    public static final String OPEN_PROFILE_VIEWS = "org.telegram.messenger.OPEN_BYGRAM_PROFILE_VIEWS";
+    public static final String PROFILE_VIEWS_OWNER = "bygram_profile_views_owner";
+
     private static final String ENDPOINT = "https://byxarek.site/TEST-PROJECT/BYgram/api/";
     private static final java.util.HashSet<Integer> pollingProfileViews = new java.util.HashSet<>();
 
@@ -46,11 +49,26 @@ public final class BygramAccountService {
     public static void profileViewsRequest(int account, JSONObject data, ProfileViewsCallback callback) {
         long id = UserConfig.getInstance(account).getClientUserId();
         if (id <= 0) { callback.run(null, ""); return; }
+        profileViewsRequest(account, id, data, true, callback);
+    }
+
+    public static boolean canRefreshProfileViews(int account) {
+        long id = UserConfig.getInstance(account).getClientUserId();
+        return id > 0 && (!accountToken(id).isEmpty() || accountSessions().contains("exchange_" + id));
+    }
+
+    private static void profileViewsRequest(int account, long id, JSONObject data, boolean canRegister, ProfileViewsCallback callback) {
         try { data.put("user_id", id); } catch (Exception e) { FileLog.e(e); callback.run(null, ""); return; }
         request(id, data, true, response -> {
-            if (response != null && response.optBoolean("needs_registration") && "profile_views_set".equals(data.optString("action"))) {
+            if (UserConfig.getInstance(account).getClientUserId() != id) {
+                callback.run(null, "");
+                return;
+            }
+            if (canRegister && response != null && response.optBoolean("needs_registration") && "profile_views_set".equals(data.optString("action"))) {
                 register(id, (registered, authUrl) -> {
-                    if (registered) profileViewsRequest(account, data, callback);
+                    if (registered && UserConfig.getInstance(account).getClientUserId() == id) {
+                        profileViewsRequest(account, id, data, false, callback);
+                    }
                     else callback.run(response, authUrl);
                 });
                 return;
@@ -93,6 +111,7 @@ public final class BygramAccountService {
             return;
         }
         if (!pollingProfileViews.add(account)) { if (done != null) done.run(); return; }
+        long ownerId = UserConfig.getInstance(account).getClientUserId();
         JSONObject data = json("action", "profile_views_poll");
         profileViewsRequest(account, data, (response, authUrl) -> {
             org.json.JSONArray views = response == null || !response.optBoolean("ok") ? null : response.optJSONArray("views");
@@ -123,7 +142,7 @@ public final class BygramAccountService {
                 }
                 if (bitmap != null || !avatarUrl.startsWith("https://byxarek.site/TEST-PROJECT/BYgram/api/avatar.php?")) {
                     if (bitmap == null) bitmap = avatarBitmap(avatar);
-                    try { notifyProfileView(account, viewerId, name, bitmap); }
+                    try { notifyProfileView(account, ownerId, viewerId, name, bitmap); }
                     finally { finished.run(); }
                     continue;
                 }
@@ -142,7 +161,7 @@ public final class BygramAccountService {
                     finally { if (connection != null) connection.disconnect(); }
                     Bitmap image = downloaded == null ? fallback : downloaded;
                     AndroidUtilities.runOnUIThread(() -> {
-                        try { notifyProfileView(account, viewerId, name, image); }
+                        try { notifyProfileView(account, ownerId, viewerId, name, image); }
                         finally { finished.run(); }
                     });
                 });
@@ -156,7 +175,8 @@ public final class BygramAccountService {
         return bitmap;
     }
 
-    private static void notifyProfileView(int account, long viewerId, String name, Bitmap bitmap) {
+    private static void notifyProfileView(int account, long ownerId, long viewerId, String name, Bitmap bitmap) {
+        if (UserConfig.getInstance(account).getClientUserId() != ownerId || !profileViewsEnabled(account)) return;
         Context context = ApplicationLoader.applicationContext;
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (manager == null) return;
@@ -164,11 +184,12 @@ public final class BygramAccountService {
         if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new NotificationChannel(channel,
                 LocaleController.getString(R.string.BygramProfileViews), NotificationManager.IMPORTANCE_DEFAULT));
         Intent intent = new Intent(context, LaunchActivity.class);
-        intent.setAction(Intent.ACTION_MAIN);
+        intent.setAction(OPEN_PROFILE_VIEWS);
+        intent.setData(Uri.parse("bygram://profile-views/" + ownerId));
         intent.putExtra("currentAccount", account);
-        intent.putExtra("bygram_profile_views", true);
+        intent.putExtra(PROFILE_VIEWS_OWNER, ownerId);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent pending = PendingIntent.getActivity(context, 31 * account + (int) (viewerId ^ (viewerId >>> 32)), intent,
+        PendingIntent pending = PendingIntent.getActivity(context, account, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0));
         Notification notification = new androidx.core.app.NotificationCompat.Builder(context, channel)
                 .setSmallIcon(R.drawable.notification).setLargeIcon(bitmap)

@@ -1344,7 +1344,7 @@ public class StoriesController {
     }
 
     public boolean markStoryAsRead(TL_stories.PeerStories userStories, TL_stories.StoryItem storyItem, boolean profile) {
-        boolean blockReadReceipt = BygramGhostMode.shouldBlockStoryReads();
+        boolean blockReadReceipt = BygramGhostMode.shouldBlockStoryReads(currentAccount);
         if (storyItem == null || userStories == null) {
             return false;
         }
@@ -3791,7 +3791,7 @@ public class StoriesController {
             if (seenStories.contains(storyId)) return false;
             seenStories.add(storyId);
             saveCache();
-            if (!BygramGhostMode.shouldBlockStoryReads()) {
+            if (!BygramGhostMode.shouldBlockStoryReads(currentAccount)) {
                 TL_stories.TL_stories_incrementStoryViews req = new TL_stories.TL_stories_incrementStoryViews();
                 req.peer = MessagesController.getInstance(currentAccount).getInputPeer(dialogId);
                 req.id.add(storyId);

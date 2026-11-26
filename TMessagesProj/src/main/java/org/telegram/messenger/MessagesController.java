@@ -9532,7 +9532,7 @@ public class MessagesController extends BaseController implements NotificationCe
             }
             ArrayList<Integer> locallyDeletedMessages = messages;
             ArrayList<Integer> bygramDeletedMessages = null;
-            if (!scheduled && !quickReplies && !welcomeMessages && BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)
+            if (!scheduled && !quickReplies && !welcomeMessages && BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_DELETED)
                     && BygramSpyMode.isHistoryAllowed(currentAccount, dialogId)) {
                 locallyDeletedMessages = new ArrayList<>();
                 bygramDeletedMessages = new ArrayList<>();
@@ -9550,7 +9550,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     }
                     TLRPC.Message storedMessage = messageObject == null ? getMessagesStorage().getMessage(dialogId, messageId) : messageObject.messageOwner;
                     if (alreadySaved.contains(messageId) || messageObject != null && messageObject.isBygramDeleted()
-                            || !BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_OWN_DELETED) && (dialogId == getUserConfig().getClientUserId() || storedMessage == null || storedMessage.out)) {
+                            || !BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_OWN_DELETED) && (dialogId == getUserConfig().getClientUserId() || storedMessage == null || storedMessage.out)) {
                         locallyDeletedMessages.add(messageId);
                     } else {
                         bygramDeletedMessages.add(messageId);
@@ -10240,9 +10240,9 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     private void deleteDialog(final long did, int onlyHistory, boolean revoke, boolean recordChatDeletion) {
-        if (onlyHistory != 2 && onlyHistory != 3 && BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)
+        if (onlyHistory != 2 && onlyHistory != 3 && BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_DELETED)
                 && BygramSpyMode.isHistoryAllowed(currentAccount, did)) {
-            int retentionState = getMessagesStorage().getBygramDialogRetentionStateSync(did, onlyHistory == 0 || BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_OWN_DELETED));
+            int retentionState = getMessagesStorage().getBygramDialogRetentionStateSync(did, onlyHistory == 0 || BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_OWN_DELETED));
             if (!recordChatDeletion && retentionState == 2) {
                 return;
             }
@@ -10796,8 +10796,8 @@ public class MessagesController extends BaseController implements NotificationCe
         checkReadTasks();
 
         if (getUserConfig().isClientActivated()) {
-            boolean bygramForceOffline = BygramGhostMode.shouldForceOffline();
-            if (!BygramGhostMode.shouldBlockOnline() && !bygramForceOffline && !ignoreSetOnline && getConnectionsManager().getPauseTime() == 0 && ApplicationLoader.isScreenOn && !ApplicationLoader.mainInterfacePausedStageQueue) {
+            boolean bygramForceOffline = BygramGhostMode.shouldForceOffline(currentAccount);
+            if (!BygramGhostMode.shouldBlockOnline(currentAccount) && !bygramForceOffline && !ignoreSetOnline && getConnectionsManager().getPauseTime() == 0 && ApplicationLoader.isScreenOn && !ApplicationLoader.mainInterfacePausedStageQueue) {
                 if (ApplicationLoader.mainInterfacePausedStageQueueTime != 0 && Math.abs(ApplicationLoader.mainInterfacePausedStageQueueTime - System.currentTimeMillis()) > 1000) {
                     if (statusSettingState != 1 && (lastStatusUpdateTime == 0 || Math.abs(System.currentTimeMillis() - lastStatusUpdateTime) >= 55000 || offlineSent)) {
                         statusSettingState = 1;
@@ -11679,7 +11679,7 @@ public class MessagesController extends BaseController implements NotificationCe
         if (action < 0 || action >= sendingTypings.length || dialogId == 0) {
             return false;
         }
-        if (BygramGhostMode.shouldBlockTyping()) {
+        if (BygramGhostMode.shouldBlockTyping(currentAccount)) {
             return false;
         }
         final long selfId = UserConfig.getInstance(UserConfig.selectedAccount).getClientUserId();
@@ -14774,7 +14774,7 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public void markMessageContentAsRead(MessageObject messageObject) {
-        boolean blockReadReceipt = BygramGhostMode.shouldBlockReadReceipts();
+        boolean blockReadReceipt = BygramGhostMode.shouldBlockReadReceipts(currentAccount);
         if (messageObject.scheduled) {
             return;
         }
@@ -14815,7 +14815,7 @@ public class MessagesController extends BaseController implements NotificationCe
 
     public void markMentionMessageAsRead(int mid, long channelId, long did) {
         getMessagesStorage().markMentionMessageAsRead(did, mid, did);
-        if (BygramGhostMode.shouldBlockReadReceipts()) return;
+        if (BygramGhostMode.shouldBlockReadReceipts(currentAccount)) return;
         if (channelId != 0) {
             TLRPC.TL_channels_readMessageContents req = new TLRPC.TL_channels_readMessageContents();
             req.channel = getInputChannel(channelId);
@@ -14863,7 +14863,7 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public void markMessageAsRead2(long dialogId, int mid, TLRPC.InputChannel inputChannel, int ttl, long taskId, boolean createDeleteTask) {
-        if (BygramGhostMode.shouldBlockReadReceipts()) return;
+        if (BygramGhostMode.shouldBlockReadReceipts(currentAccount)) return;
         if (mid == 0 || ttl < 0) {
             return;
         }
@@ -14923,7 +14923,7 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public void markMessageAsRead(long dialogId, long randomId, int ttl) {
-        if (BygramGhostMode.shouldBlockReadReceipts()) return;
+        if (BygramGhostMode.shouldBlockReadReceipts(currentAccount)) return;
         if (randomId == 0 || dialogId == 0 || ttl <= 0 && ttl != Integer.MIN_VALUE) {
             return;
         }
@@ -14944,7 +14944,7 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     private void completeReadTask(ReadTask task) {
-        if (BygramGhostMode.shouldBlockReadReceipts() && !task.bygramAllowed) {
+        if (BygramGhostMode.shouldBlockReadReceipts(currentAccount) && !task.bygramAllowed) {
             return;
         }
         if (task.replyId != 0 && task.monoForumPeerId == 0) {
@@ -15057,7 +15057,7 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public void markMentionsAsRead(long dialogId, long topicId) {
-        if (BygramGhostMode.shouldBlockReadReceipts()) {
+        if (BygramGhostMode.shouldBlockReadReceipts(currentAccount)) {
             getMessagesStorage().resetMentionsCount(dialogId, topicId, 0);
             return;
         }
@@ -15079,7 +15079,7 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     private void markDialogAsRead(long dialogId, int maxPositiveId, int maxNegativeId, int maxDate, boolean popup, long threadId, int countDiff, boolean readNow, int scheduledCount, boolean bygramAllowed) {
-        final boolean blockReadReceipt = !bygramAllowed && BygramGhostMode.shouldBlockReadReceipts();
+        final boolean blockReadReceipt = !bygramAllowed && BygramGhostMode.shouldBlockReadReceipts(currentAccount);
         boolean createReadTask;
 
         if (threadId != 0) {
@@ -15236,7 +15236,7 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public void markDialogAsReadByAction(long dialogId, int maxId, long topicId) {
-        if (!BygramGhostMode.shouldReadOnActions() || dialogId == 0 || maxId <= 0) {
+        if (!BygramGhostMode.shouldReadOnActions(currentAccount) || dialogId == 0 || maxId <= 0) {
             return;
         }
         markDialogAsRead(dialogId, maxId, maxId, 0, false, topicId, 0, true, 0, true);
@@ -15248,7 +15248,7 @@ public class MessagesController extends BaseController implements NotificationCe
 
     public void markEncryptedDialogAsReadAfterSend(int chatId, long userId) {
         AndroidUtilities.runOnUIThread(() -> {
-            if (!BygramGhostMode.shouldReadOnActions() || getUserConfig().getClientUserId() != userId) return;
+            if (!BygramGhostMode.shouldReadOnActions(currentAccount) || getUserConfig().getClientUserId() != userId) return;
             long dialogId = DialogObject.makeEncryptedDialogId(chatId);
             TLRPC.Dialog dialog = getDialog(dialogId);
             if (dialog != null && dialog.top_message != 0 && dialog.last_message_date > 0) {
@@ -15258,7 +15258,7 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public void markDialogAsReadAfterSend(BygramGhostMode.SentMessage sent, long userId) {
-        if (!BygramGhostMode.shouldReadOnActions() || sent.scheduledAt() != 0 || sent.peer() == null) return;
+        if (!BygramGhostMode.shouldReadOnActions(currentAccount) || sent.scheduledAt() != 0 || sent.peer() == null) return;
         long dialogId = DialogObject.getPeerDialogId(sent.peer());
         if (dialogId == 0 || dialogId == userId) return;
         TLRPC.InputReplyTo reply = sent.replyTo();
@@ -18445,8 +18445,8 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     private boolean shouldKeepBygramDeletedMessage(int messageId, long dialogId, boolean allowNotification) {
-        boolean keepDeleted = BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED);
-        boolean notify = allowNotification && BygramSpyMode.getBoolean(BygramSpyMode.SPY_NOTIFY_DELETED);
+        boolean keepDeleted = BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_DELETED);
+        boolean notify = allowNotification && BygramSpyMode.hasDeletionNotifications(currentAccount);
         if (!keepDeleted && !notify) return false;
         long resolvedDialogId = dialogId;
         if (resolvedDialogId == 0) {
@@ -18467,7 +18467,7 @@ public class MessagesController extends BaseController implements NotificationCe
                 && resolvedDialogId != getUserConfig().getClientUserId()
                 && (DialogObject.isUserDialog(resolvedDialogId) || DialogObject.isChatDialog(resolvedDialogId))
                 && (message.ttl_period == 0 || (long) message.date + message.ttl_period > getConnectionsManager().getCurrentTime());
-        if (!keepDeleted || !BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_OWN_DELETED)
+        if (!keepDeleted || !BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_OWN_DELETED)
                 && (message.out || resolvedDialogId == getUserConfig().getClientUserId())) {
             final long peerId = resolvedDialogId;
             if (notifyDeletion) AndroidUtilities.runOnUIThread(() -> getNotificationsController().notifyBygramDeletion(peerId, 0, 0, false));
@@ -20189,7 +20189,7 @@ public class MessagesController extends BaseController implements NotificationCe
 
                 MessageObject.getDialogId(message);
 
-                if (BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_EDITS) && BygramSpyMode.isHistoryAllowed(currentAccount, message.dialog_id)) {
+                if (BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_EDITS) && BygramSpyMode.isHistoryAllowed(currentAccount, message.dialog_id)) {
                     TLRPC.Message previousMessage = getMessagesStorage().getMessage(message.dialog_id, message.id);
                     if (previousMessage != null && (!TextUtils.equals(previousMessage.message, message.message)
                             || !BygramSpyMode.sameEntities(previousMessage.entities, message.entities)
@@ -22324,7 +22324,7 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public void markReactionsAsRead(long dialogId, long topicId) {
-        boolean blockReadReceipt = BygramGhostMode.shouldBlockReadReceipts();
+        boolean blockReadReceipt = BygramGhostMode.shouldBlockReadReceipts(currentAccount);
         if (topicId == 0) {
             TLRPC.Dialog dialog = dialogs_dict.get(dialogId);
             if (dialog != null) {
@@ -22914,7 +22914,7 @@ public class MessagesController extends BaseController implements NotificationCe
         if (clean) {
             clearingHistoryDialogs.put(did, dialog);
         } else {
-            if (!BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)
+            if (!BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_DELETED)
                     || getMessagesStorage().getBygramDialogRetentionStateSync(did, true) != 1) {
                 deletingDialogs.put(did, dialog);
                 allDialogs.remove(dialog);

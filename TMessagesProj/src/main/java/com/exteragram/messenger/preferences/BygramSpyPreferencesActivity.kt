@@ -14,11 +14,11 @@ import org.telegram.ui.Components.UniversalAdapter
 class BygramSpyPreferencesActivity : BasePreferencesActivity() {
     private val clearId = 100
     private val exclusionsId = 101
+    private val notificationId = 200
 
     private enum class Option(val key: String, val label: Int, val info: Int = 0) {
         DELETED(BygramSpyMode.SPY_SAVE_DELETED, R.string.BygramSaveDeleted),
         OWN(BygramSpyMode.SPY_SAVE_OWN_DELETED, R.string.BygramSaveOwnDeleted),
-        NOTIFY(BygramSpyMode.SPY_NOTIFY_DELETED, R.string.BygramNotifyDeleted),
         EDITS(BygramSpyMode.SPY_SAVE_EDITS, R.string.BygramSaveEdits),
         READ(BygramSpyMode.SPY_SAVE_READ_DATE, R.string.BygramSaveReadDate, R.string.BygramSaveReadDateInfo),
         ONLINE(BygramSpyMode.SPY_SAVE_LAST_ONLINE, R.string.BygramSaveLastOnline, R.string.BygramSaveLastOnlineInfo)
@@ -32,11 +32,17 @@ class BygramSpyPreferencesActivity : BasePreferencesActivity() {
         items.add(UItem.asHeader(getString(R.string.SearchAllChatsShort)))
         for (option in Option.entries) {
             items.add(UItem.asCheck(option.ordinal + 1, getString(option.label))
-                .setChecked(BygramSpyMode.getBoolean(option.key)))
+                .setChecked(BygramSpyMode.getBoolean(currentAccount, option.key)))
             if (option.info != 0) items.add(UItem.asShadow(getString(option.info)))
         }
         items.add(UItem.asButton(exclusionsId, R.drawable.msg_permissions, getString(R.string.BygramSpyExcludedChats)))
         items.add(UItem.asShadow(getString(R.string.BygramSpyExcludedChatsInfo)))
+        items.add(UItem.asHeader(getString(R.string.BygramSpyDeletionNotifications)))
+        for (type in BygramSpyMode.DeletionNotification.entries) {
+            items.add(UItem.asCheck(notificationId + type.ordinal, getString(type.title))
+                .setChecked(type.isEnabled(currentAccount)))
+        }
+        items.add(UItem.asShadow())
         items.add(UItem.asHeader(getString(R.string.DataSettings)))
         items.add(UItem.asButton(clearId, R.drawable.msg_delete, getString(R.string.BygramClearSpyData)))
         items.add(UItem.asShadow())
@@ -44,8 +50,12 @@ class BygramSpyPreferencesActivity : BasePreferencesActivity() {
 
     override fun onClick(item: UItem, view: View, position: Int, x: Float, y: Float) {
         val option = Option.entries.getOrNull(item.id - 1)
+        val notification = BygramSpyMode.DeletionNotification.entries.getOrNull(item.id - notificationId)
         if (option != null) {
-            BygramSpyMode.setBoolean(option.key, !BygramSpyMode.getBoolean(option.key))
+            BygramSpyMode.setBoolean(currentAccount, option.key, !BygramSpyMode.getBoolean(currentAccount, option.key))
+            refreshPreferenceItems()
+        } else if (notification != null) {
+            notification.setEnabled(currentAccount, !notification.isEnabled(currentAccount))
             refreshPreferenceItems()
         } else if (item.id == exclusionsId) {
             val selected = BygramSpyMode.excludedChats(currentAccount).mapNotNull { it.toLongOrNull() }
@@ -71,7 +81,7 @@ class BygramSpyPreferencesActivity : BasePreferencesActivity() {
             showDialog(AlertDialog.Builder(context)
                 .setTitle(getString(R.string.BygramClearSpyData))
                 .setMessage(getString(R.string.BygramClearSpyDataConfirm))
-                .setPositiveButton(getString(R.string.Delete)) { _, _ -> BygramSpyMode.clearSpyData() }
+                .setPositiveButton(getString(R.string.Delete)) { _, _ -> BygramSpyMode.clearSpyData(currentAccount) }
                 .setNegativeButton(getString(R.string.Cancel), null)
                 .create())
         }

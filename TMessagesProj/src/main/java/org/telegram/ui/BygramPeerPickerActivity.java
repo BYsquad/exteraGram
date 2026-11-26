@@ -3,18 +3,24 @@ package org.telegram.ui;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.view.View;
+import android.widget.EditText;
 
 import com.exteragram.messenger.preferences.BasePreferencesActivity;
 
 import org.telegram.messenger.R;
+import org.telegram.messenger.UserObject;
+import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLObject;
+import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBarMenu;
+import org.telegram.ui.ActionBar.ActionBarMenuItem;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.Locale;
 
 public final class BygramPeerPickerActivity extends BasePreferencesActivity {
     private final String title;
@@ -25,6 +31,7 @@ public final class BygramPeerPickerActivity extends BasePreferencesActivity {
     private final LinkedHashSet<Long> selected = new LinkedHashSet<>();
     private Runnable confirmed;
     private boolean allowEmpty;
+    private String query = "";
 
     public BygramPeerPickerActivity(String title, boolean multiple, Utilities.Callback<ArrayList<Long>> onSelected) {
         this.title = title;
@@ -47,6 +54,20 @@ public final class BygramPeerPickerActivity extends BasePreferencesActivity {
     @Override public String getTitle() { return title; }
 
     @Override protected void populateActionBarMenu(ActionBarMenu menu) {
+        ActionBarMenuItem search = menu.addItem(2, R.drawable.msg_search).setIsSearchField(true)
+                .setActionBarMenuItemSearchListener(new ActionBarMenuItem.ActionBarMenuItemSearchListener() {
+                    @Override public void onSearchCollapse() {
+                        query = "";
+                        refreshPreferenceItems();
+                    }
+
+                    @Override public void onTextChanged(EditText editText) {
+                        query = editText.getText().toString().trim().toLowerCase(Locale.ROOT);
+                        refreshPreferenceItems();
+                    }
+                });
+        search.setSearchFieldHint(getString(R.string.Search));
+        search.setContentDescription(getString(R.string.Search));
         menu.addItem(1, R.drawable.ic_ab_done).setContentDescription(getString(R.string.Done));
     }
 
@@ -68,8 +89,28 @@ public final class BygramPeerPickerActivity extends BasePreferencesActivity {
 
     @Override protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         for (int i = 0; i < peers.size(); i++) {
-            items.add(UItem.asUserCheckbox(i + 1, peers.get(i)).setChecked(selected.contains(ids.get(i))));
+            TLObject peer = peers.get(i);
+            if (matchesSearch(peer)) {
+                items.add(UItem.asUserCheckbox(i + 1, peer).setChecked(selected.contains(ids.get(i))));
+            }
         }
+    }
+
+    private boolean matchesSearch(TLObject peer) {
+        if (query.isEmpty()) return true;
+        String name;
+        String username;
+        if (peer instanceof TLRPC.User user) {
+            name = UserObject.getUserName(user);
+            username = UserObject.getPublicUsername(user);
+        } else if (peer instanceof TLRPC.Chat chat) {
+            name = chat.title;
+            username = ChatObject.getPublicUsername(chat);
+        } else {
+            return false;
+        }
+        return (name != null && name.toLowerCase(Locale.ROOT).contains(query))
+                || (username != null && ("@" + username).toLowerCase(Locale.ROOT).contains(query));
     }
 
     @Override protected void onClick(UItem item, View view, int position, float x, float y) {

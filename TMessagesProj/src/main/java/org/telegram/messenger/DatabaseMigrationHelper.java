@@ -1725,6 +1725,22 @@ public class DatabaseMigrationHelper {
         return version;
     }
 
+    static void ensureBygramDialogFilterColumns(SQLiteDatabase database) throws Exception {
+        // Older BYgram builds can report a current schema version without these exteraGram columns.
+        if (!hasColumn(database, "dialog_filter", "color")) {
+            database.executeFast("ALTER TABLE dialog_filter ADD COLUMN color INTEGER DEFAULT -1").stepThis().dispose();
+        }
+        if (!hasColumn(database, "dialog_filter", "emoticon")) {
+            database.executeFast("ALTER TABLE dialog_filter ADD COLUMN emoticon TEXT").stepThis().dispose();
+        }
+        if (!hasColumn(database, "dialog_filter", "entities")) {
+            database.executeFast("ALTER TABLE dialog_filter ADD COLUMN entities BLOB").stepThis().dispose();
+        }
+        if (!hasColumn(database, "dialog_filter", "noanimate")) {
+            database.executeFast("ALTER TABLE dialog_filter ADD COLUMN noanimate INTEGER").stepThis().dispose();
+        }
+    }
+
     private static boolean hasColumn(SQLiteDatabase database, String table, String column) throws Exception {
         SQLiteCursor cursor = database.queryFinalized("PRAGMA table_info(" + table + ")");
         try {

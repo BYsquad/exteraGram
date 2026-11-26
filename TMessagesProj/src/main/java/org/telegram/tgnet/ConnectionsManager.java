@@ -505,11 +505,11 @@ public class ConnectionsManager extends BaseController {
     private boolean bygramOfflinePending;
 
     private void scheduleBygramOffline(long userId) {
-        if (bygramOfflinePending || !BygramGhostMode.shouldAutoOffline()) return;
+        if (bygramOfflinePending || !BygramGhostMode.shouldAutoOffline(currentAccount)) return;
         bygramOfflinePending = true;
         Utilities.stageQueue.postRunnable(() -> {
             bygramOfflinePending = false;
-            if (getUserConfig().getClientUserId() != userId || !BygramGhostMode.shouldAutoOffline()) return;
+            if (getUserConfig().getClientUserId() != userId || !BygramGhostMode.shouldAutoOffline(currentAccount)) return;
             TL_account.updateStatus request = new TL_account.updateStatus();
             request.offline = true;
             sendRequest(request, null);
@@ -527,7 +527,7 @@ public class ConnectionsManager extends BaseController {
             if (modifiedRequest != null) {
                 modifiedRequest = FeedRequestNormalizer.normalize(currentAccount, modifiedRequest);
             }
-            if (modifiedRequest == null || !BygramGhostMode.prepareRequest(modifiedRequest, allowReadReceipt)) {
+            if (modifiedRequest == null || !BygramGhostMode.prepareRequest(currentAccount, modifiedRequest, allowReadReceipt)) {
                 if (BuildVars.LOGS_ENABLED) {
                     FileLog.d("Request cancelled by client policy: " + requestName);
                 }
@@ -542,8 +542,8 @@ public class ConnectionsManager extends BaseController {
             }
             object = modifiedRequest;
             final long bygramUserId = getUserConfig().getClientUserId();
-            final boolean bygramAutoOffline = bygramUserId != 0 && BygramGhostMode.shouldAutoOffline() && BygramGhostMode.canSurfaceOnline(object);
-            final boolean bygramReadOnAction = bygramUserId != 0 && BygramGhostMode.shouldReadOnActions();
+            final boolean bygramAutoOffline = bygramUserId != 0 && BygramGhostMode.shouldAutoOffline(currentAccount) && BygramGhostMode.canSurfaceOnline(object);
+            final boolean bygramReadOnAction = bygramUserId != 0 && BygramGhostMode.shouldReadOnActions(currentAccount);
             final BygramGhostMode.SentMessage bygramSent = bygramReadOnAction ? BygramGhostMode.sentMessage(object) : null;
             final int bygramEncryptedChatId = bygramReadOnAction ? BygramGhostMode.sentEncryptedChat(object) : 0;
 

@@ -1,13 +1,12 @@
 package org.telegram.ui.Components;
 
-import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.os.SystemClock;
 import android.view.View;
 
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.BygramPreferences;
 import org.telegram.ui.ActionBar.Theme;
 
 import java.util.Random;
@@ -27,11 +26,10 @@ public final class BygramSnow {
         }
     }
 
-    public void draw(View view, Canvas canvas) {
-        SharedPreferences prefs = MessagesController.getGlobalMainSettings();
-        if (!prefs.getBoolean(navigation ? "bygram_snow_navigation" : "bygram_snow_pages", false)
+    public void draw(View view, Canvas canvas, int account) {
+        if (!BygramPreferences.getBoolean(account, navigation ? "bygram_snow_navigation" : "bygram_snow_pages", false)
                 || !view.isShown() || view.getWidth() == 0 || view.getHeight() == 0) return;
-        float density = prefs.getInt("bygram_snow_density", 35) / 100f;
+        float density = BygramPreferences.preferences().getInt(BygramPreferences.key(account, "bygram_snow_density"), 35) / 100f;
         int count = Math.min(navigation ? 32 : 140, Math.max(1, (int) ((navigation ? 32 : 140) * density)));
         paint.setColor(Theme.isCurrentThemeDark() ? 0x9aeef8ff : 0x803e7ab1);
         float time = (SystemClock.uptimeMillis() % 3_600_000L) / 1000f;

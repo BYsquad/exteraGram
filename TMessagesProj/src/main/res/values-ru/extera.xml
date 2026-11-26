@@ -1416,7 +1416,7 @@
     <string name="BygramPreferences">Настройки BYgram</string>
     <string name="BygramOther">Другое</string>
     <string name="BygramUsageStatistics">Сбор статистики</string>
-    <string name="BygramUsageStatisticsInfo">BYgram собирает общую статистику, чтобы считать пользователей клиента. Если отключить сбор, после синхронизации это устройство исключается из подсчёта, а ваши аккаунты и их огоньки исключаются из статистики. В чатах огоньки продолжат работать.</string>
+    <string name="BygramUsageStatisticsInfo">Настройка действует для текущего аккаунта. После синхронизации аккаунт и его огоньки исключаются из статистики. Устройство учитывается, только если сбор разрешён во всех аккаунтах на нём. Огоньки в чатах продолжат работать.</string>
     <string name="BygramBasedOnExtera">На основе exteraGram</string>
     <string name="BygramSourceCode">Исходный код</string>
     <string name="BygramUpdateAvailable">Доступно обновление BYgram</string>
@@ -1459,7 +1459,13 @@
     <string name="BygramEditHistory">История правок</string>
     <string name="BygramSaveLastOnlineInfo">Сохраняет последнее замеченное время в сети для пользователей со скрытым временем посещения. Время приблизительное.</string>
     <string name="BygramNoEditHistory">Сохранённых правок нет</string>
-    <string name="BygramNotifyDeleted">Уведомлять об удалении сообщений в личных чатах</string>
+    <string name="BygramUpdateButton">Есть обновление</string>
+    <string name="BygramSpyDeletionNotifications">Уведомления об удалении</string>
+    <string name="BygramSpyPrivateChats">Личные чаты</string>
+    <string name="BygramSpyNotificationTitle">Шпион · %1$s</string>
+    <string name="BygramMessageDeletedInGroup">В группе «%1$s» удалено сообщение</string>
+    <string name="BygramMessageDeletedInChannel">В канале «%1$s» удалена публикация</string>
+    <string name="BygramMessageDeletedInBot">В чате с ботом «%1$s» удалено сообщение</string>
     <string name="BygramActivityAvailableUsers">Контакты и чаты</string>
     <string name="BygramProfileViews">Просмотры профиля</string>
     <string name="BygramActivitySelectedUsers">Пользователи с доступом</string>

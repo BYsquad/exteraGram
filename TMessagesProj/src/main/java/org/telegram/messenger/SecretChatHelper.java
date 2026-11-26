@@ -114,7 +114,7 @@ public class SecretChatHelper extends BaseController {
     protected void processPendingEncMessages() {
         if (!pendingEncMessagesToDelete.isEmpty()) {
             ArrayList<Long> pendingEncMessagesToDeleteCopy = new ArrayList<>(pendingEncMessagesToDelete);
-            if (!BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)) {
+            if (!BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_DELETED)) {
                 AndroidUtilities.runOnUIThread(() -> {
                     for (int a = 0; a < pendingEncMessagesToDeleteCopy.size(); a++) {
                         MessageObject messageObject = getMessagesController().dialogMessagesByRandomIds.get(pendingEncMessagesToDeleteCopy.get(a));
@@ -165,7 +165,7 @@ public class SecretChatHelper extends BaseController {
     }
 
     public void sendMessagesReadMessage(TLRPC.EncryptedChat encryptedChat, ArrayList<Long> random_ids, TLRPC.Message resendMessage) {
-        if (BygramGhostMode.shouldBlockReadReceipts()) {
+        if (BygramGhostMode.shouldBlockReadReceipts(currentAccount)) {
             return;
         }
         if (!(encryptedChat instanceof TLRPC.TL_encryptedChat)) {
@@ -253,7 +253,7 @@ public class SecretChatHelper extends BaseController {
             });
         }
         if (newChat instanceof TLRPC.TL_encryptedChatDiscarded && newChat.history_deleted
-                && (!BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED) || !BygramSpyMode.isHistoryAllowed(currentAccount, dialog_id))) {
+                && (!BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_DELETED) || !BygramSpyMode.isHistoryAllowed(currentAccount, dialog_id))) {
             AndroidUtilities.runOnUIThread(() -> getMessagesController().deleteDialog(dialog_id, 0));
         }
     }
@@ -1145,7 +1145,7 @@ public class SecretChatHelper extends BaseController {
                     return newMessage;
                 } else if (serviceMessage.action instanceof TLRPC.TL_decryptedMessageActionFlushHistory) {
                     long did = DialogObject.makeEncryptedDialogId(chat.id);
-                    if (BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED) && BygramSpyMode.isHistoryAllowed(currentAccount, did)) {
+                    if (BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_DELETED) && BygramSpyMode.isHistoryAllowed(currentAccount, did)) {
                         getMessagesStorage().markDialogMessagesAsBygramDeleted(did);
                         return null;
                     }

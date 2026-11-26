@@ -401,6 +401,7 @@ public class MessagesStorage extends BaseController {
                         throw new RuntimeException("malformed");
                     }
                 }
+                DatabaseMigrationHelper.ensureBygramDialogFilterColumns(database);
             }
             openBygramSpyArchive();
             databaseCreated = true;
@@ -2813,7 +2814,7 @@ public class MessagesStorage extends BaseController {
                     dialogFiltersMap.put(filter.id, filter);
                     filtersById.put(filter.id, filter);
 
-                    state = database.executeFast("REPLACE INTO dialog_filter VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    state = database.executeFast("REPLACE INTO dialog_filter(id, ord, unread_count, flags, title, color, emoticon, entities, noanimate) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)");
                     state.bindInteger(1, filter.id);
                     state.bindInteger(2, filter.order);
                     state.bindInteger(3, filter.unreadCount);
@@ -3334,7 +3335,7 @@ public class MessagesStorage extends BaseController {
                 dialogFiltersMap.put(filter.id, filter);
             }
 
-            state = database.executeFast("REPLACE INTO dialog_filter VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            state = database.executeFast("REPLACE INTO dialog_filter(id, ord, unread_count, flags, title, color, emoticon, entities, noanimate) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)");
             state.bindInteger(1, filter.id);
             state.bindInteger(2, filter.order);
             state.bindInteger(3, filter.unreadCount);
@@ -5968,7 +5969,7 @@ public class MessagesStorage extends BaseController {
     private boolean bygramSpyReconciling;
     private boolean bygramSpyRestartReconciliation;
     private final SharedPreferences.OnSharedPreferenceChangeListener bygramSpyPreferenceListener = (prefs, key) -> {
-        if (key == null || BygramSpyMode.SPY_SAVE_DELETED.equals(key) || key.startsWith(BygramSpyMode.SPY_EXCLUDED_CHATS)) {
+        if (key == null || BygramPreferences.key(currentAccount, BygramSpyMode.SPY_SAVE_DELETED).equals(key) || key.startsWith(BygramSpyMode.SPY_EXCLUDED_CHATS)) {
             storageQueue.postRunnable(() -> {
                 try {
                     updateBygramSpyCapture();
@@ -6047,7 +6048,7 @@ public class MessagesStorage extends BaseController {
                 // Ignore obsolete preference entries without a dialog ID.
             }
         }
-        if (BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)) {
+        if (BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_DELETED)) {
             database.executeFast("INSERT INTO bygram_spy_capture VALUES (1)").stepThis().dispose();
             database.executeFast("DELETE FROM bygram_spy_messages WHERE saved = 0 AND uid IN (SELECT uid FROM bygram_spy_excluded)").stepThis().dispose();
         } else {
@@ -6076,7 +6077,7 @@ public class MessagesStorage extends BaseController {
     }
 
     private void stageBygramSpyArchive(String scope) throws SQLiteException {
-        if (!BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)) return;
+        if (!BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_DELETED)) return;
         database.executeFast("INSERT OR IGNORE INTO bygram_spy_messages (" + BYGRAM_SPY_COLUMNS + ") " +
                 "SELECT " + BYGRAM_SPY_COLUMNS + " FROM messages_v2 WHERE mid > 0 AND send_state = 0 " +
                 "AND uid < 4611686018427387904 AND data IS NOT NULL AND " + scope).stepThis().dispose();
@@ -6119,7 +6120,7 @@ public class MessagesStorage extends BaseController {
                 bygramSpyRestartReconciliation = true;
                 return;
             }
-            if (!BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)) return;
+            if (!BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_DELETED)) return;
             bygramSpyReconciling = true;
             reconcileNextBygramSpyBatch(Long.MIN_VALUE, 0);
         });
@@ -6131,7 +6132,7 @@ public class MessagesStorage extends BaseController {
         boolean channel = false;
         ArrayList<Integer> ids = new ArrayList<>();
         try {
-            if (BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)) {
+            if (BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_DELETED)) {
                 cursor = database.queryFinalized("SELECT uid, mid, is_channel FROM bygram_spy_messages a " +
                         "WHERE pending = 1 AND (uid > ? OR (uid = ? AND mid > ?)) " +
                         "AND NOT EXISTS (SELECT 1 FROM messages_v2 m WHERE m.uid = a.uid AND m.mid = a.mid) " +
@@ -6181,7 +6182,7 @@ public class MessagesStorage extends BaseController {
         SQLiteDatabase archiveDatabase = database;
         getConnectionsManager().sendRequest(request, (response, error) -> storageQueue.postRunnable(() -> {
             if (archiveDatabase != database) return;
-            if (response instanceof TLRPC.messages_Messages && BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)) {
+            if (response instanceof TLRPC.messages_Messages && BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_DELETED)) {
                 applyBygramSpyDifference(dialogId, ids, (TLRPC.messages_Messages) response);
             }
             reconcileNextBygramSpyBatch(dialogId, lastId);
@@ -6191,7 +6192,7 @@ public class MessagesStorage extends BaseController {
     private void applyBygramSpyDifference(long did, ArrayList<Integer> ids, TLRPC.messages_Messages response) {
         if (!BygramSpyMode.isHistoryAllowed(currentAccount, did)) return;
         ArrayList<Integer> savedIds = new ArrayList<>();
-        boolean keepOwn = BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_OWN_DELETED);
+        boolean keepOwn = BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_OWN_DELETED);
         try {
             for (TLRPC.Message remote : response.messages) {
                 if (!ids.contains(remote.id)) continue;
@@ -6446,7 +6447,7 @@ public class MessagesStorage extends BaseController {
 
     // 0: nothing to retain, 1: live history, 2: only Spy copies remain.
     public int getBygramDialogRetentionStateSync(long dialogId) {
-        return getBygramDialogRetentionStateSync(dialogId, BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_OWN_DELETED));
+        return getBygramDialogRetentionStateSync(dialogId, BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_OWN_DELETED));
     }
 
     public int getBygramDialogRetentionStateSync(long dialogId, boolean keepOwn) {
@@ -6500,7 +6501,7 @@ public class MessagesStorage extends BaseController {
                 cursor = database.queryFinalized("SELECT mid, out FROM messages_v2 WHERE uid = ? ORDER BY date DESC, mid DESC", dialogId);
                 while (cursor.next()) {
                     int id = cursor.intValue(0);
-                    if (respectOwnDeletionSetting && (dialogId == getUserConfig().getClientUserId() || cursor.intValue(1) != 0) && !BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_OWN_DELETED)
+                    if (respectOwnDeletionSetting && (dialogId == getUserConfig().getClientUserId() || cursor.intValue(1) != 0) && !BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_OWN_DELETED)
                             && !getMessageWithCustomParamsOnlyInternal(id, dialogId).bygramDeleted) {
                         removeIds.add(id);
                     } else {
@@ -15431,7 +15432,7 @@ public class MessagesStorage extends BaseController {
                 cursor.dispose();
                 cursor = null;
                 if (!dialogs.isEmpty()) {
-                    boolean keepDeleted = BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED);
+                    boolean keepDeleted = BygramSpyMode.getBoolean(currentAccount, BygramSpyMode.SPY_SAVE_DELETED);
                     for (int a = 0, N = dialogs.size(); a < N; a++) {
                         long dialogId = dialogs.keyAt(a);
                         ArrayList<Integer> mids = dialogs.valueAt(a);

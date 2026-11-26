@@ -11,18 +11,17 @@ import java.util.Map;
 import java.util.Set;
 
 public final class BygramActivitySettings {
-    private static final String LEGACY_ACTIVITY_ENABLED = "bygram_activity_enabled";
     public static final int ACTIVITY_DIALOGS = 1;
     public static final int ACTIVITY_PROFILE = 1 << 1;
     public static final int ACTIVITY_CHAT = 1 << 2;
     public static final int ACTIVITY_ALL = ACTIVITY_DIALOGS | ACTIVITY_PROFILE | ACTIVITY_CHAT;
 
     private static String activityEnabledKey(int account) {
-        return "bygram_activity_enabled_" + account;
+        return BygramPreferences.key(account, "bygram_activity_enabled");
     }
 
     private static String activityViewersKey(int account) {
-        return "bygram_activity_viewers_" + account;
+        return BygramPreferences.key(account, "bygram_activity_viewers");
     }
 
     public static Map<Long, Integer> getActivityPermissions(int account) {
@@ -78,29 +77,9 @@ public final class BygramActivitySettings {
         preferences().edit().putBoolean(activityEnabledKey(account), enabled).apply();
     }
 
-    public static void clearActivitySettings() {
-        SharedPreferences.Editor editor = preferences().edit().remove(LEGACY_ACTIVITY_ENABLED);
-        for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
-            editor.remove(activityEnabledKey(account)).remove(activityViewersKey(account));
-        }
-        editor.apply();
-    }
-
-
     private BygramActivitySettings() {}
 
     private static SharedPreferences preferences() {
-        return MessagesController.getGlobalMainSettings();
-    }
-
-    public static void migrate() {
-        SharedPreferences prefs = preferences();
-        if (!prefs.contains(LEGACY_ACTIVITY_ENABLED)) return;
-        SharedPreferences.Editor editor = prefs.edit();
-        boolean enabled = prefs.getBoolean(LEGACY_ACTIVITY_ENABLED, false);
-        for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
-            if (!prefs.contains(activityEnabledKey(account))) editor.putBoolean(activityEnabledKey(account), enabled);
-        }
-        editor.remove(LEGACY_ACTIVITY_ENABLED).apply();
+        return BygramPreferences.preferences();
     }
 }
