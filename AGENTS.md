@@ -1,5 +1,4 @@
-При разработке используй информацию из папки docs, так же обновляй информацию там по ходу разработки.
-После каждой сборки apk - отпровляй его в телеграмм в избранное, делай только 1 apk - после выполнения всех поставленных задач.
-Введи changelog.md файл, записывай туда изменения которые ты вносишь в проект, после каждого выполненного задания или пункта из задания - вноси всё в changelog.md.
-В документацию нужно вносить пометки о том когда ты изминяешь системные интерфейсы на страницах, испровляешь баги не связанные даже с BYgram кастомными настройками.
-no use Astryx.
+Enter the documentation docs/, and work based on it.
+At the end of each task, build one universal Full debug APK for `armeabi-v7a` and `arm64-v8a` with `:TMessagesProj:assembleFullAfatDebug`.
+Create a changelog.md file and record information about all changes made during the project.
+When creating tabs/pages, use the original exteragram design.

@@ -7,20 +7,61 @@ import android.provider.Settings;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.HashSet;
 import java.util.UUID;
 
-final class BygramDeviceReporter {
+public final class BygramDeviceReporter {
     private static final long REPORT_INTERVAL_MS = 24 * 60 * 60 * 1000L;
     private static boolean pending;
+    private static final HashSet<Long> pendingAccounts = new HashSet<>();
 
     private BygramDeviceReporter() {}
 
+    private static SharedPreferences preferences() {
+        return ApplicationLoader.applicationContext.getSharedPreferences("bygram_device_metrics", Context.MODE_PRIVATE);
+    }
+
+    public static boolean isEnabled() {
+        return preferences().getBoolean("enabled", true);
+    }
+
+    public static void setEnabled(boolean enabled) {
+        SharedPreferences preferences = preferences();
+        if (isEnabled() == enabled) return;
+        preferences.edit().putBoolean("enabled", enabled)
+                .putLong("revision", preferences.getLong("revision", 0) + 1).apply();
+        report();
+    }
+
     static void report() {
+        for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
+            reportAccount(UserConfig.getInstance(account).getClientUserId());
+        }
+        reportDevice();
+    }
+
+    static void reportAccount(long userId) {
+        if (userId <= 0 || BygramAccountService.accountToken(userId).isEmpty()) return;
+        SharedPreferences preferences = preferences();
+        long revision = preferences.getLong("revision", 0);
+        String key = "account_revision_" + userId;
+        if (revision == preferences.getLong(key, 0) || !pendingAccounts.add(userId)) return;
+        BygramAccountService.reportStatisticsPreference(userId, isEnabled(), ok -> {
+            pendingAccounts.remove(userId);
+            if (ok) preferences.edit().putLong(key, revision).apply();
+            if (revision != preferences.getLong("revision", 0)) reportAccount(userId);
+        });
+    }
+
+    private static void reportDevice() {
         Context context = ApplicationLoader.applicationContext;
-        SharedPreferences preferences = context.getSharedPreferences("bygram_device_metrics", Context.MODE_PRIVATE);
+        SharedPreferences preferences = preferences();
+        boolean enabled = isEnabled();
+        long revision = preferences.getLong("revision", 0);
         long now = System.currentTimeMillis();
         long last = preferences.getLong("last_report", 0);
-        if (pending || (now >= last && now - last < REPORT_INTERVAL_MS)) return;
+        boolean synced = revision == preferences.getLong("device_revision", 0);
+        if (pending || (synced && (!enabled || (now >= last && now - last < REPORT_INTERVAL_MS)))) return;
         pending = true;
         try {
             String identity = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
@@ -38,10 +79,12 @@ final class BygramDeviceReporter {
                 id.append(Character.forDigit(value & 0xf, 16));
             }
             String model = (Build.MANUFACTURER + " " + Build.MODEL).trim();
-            BygramAccountService.reportDevice(id.toString(), model.isEmpty() ? "Android" : model,
+            BygramAccountService.reportDevice(id.toString(), enabled, model.isEmpty() ? "Android" : model,
                     BuildVars.BUILD_VERSION_STRING, Build.VERSION.SDK_INT, ok -> {
                         pending = false;
-                        if (ok) preferences.edit().putLong("last_report", System.currentTimeMillis()).apply();
+                        if (ok) preferences.edit().putLong("last_report", System.currentTimeMillis())
+                                .putLong("device_revision", revision).apply();
+                        if (revision != preferences.getLong("revision", 0)) reportDevice();
                     });
         } catch (Exception error) {
             pending = false;

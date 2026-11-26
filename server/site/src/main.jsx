@@ -1,14 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ArrowDownToLine, ArrowRight, Blocks, Flame, Palette, Shield, Smartphone } from 'lucide-react';
+import { ArrowDownToLine, ArrowRight, Eye, Flame, Folder, History, Settings, Shield, Smartphone } from 'lucide-react';
 import '@fontsource-variable/inter';
 import '../styles.css';
 import logoUrl from '../assets/bygram-logo.png';
-import ghostUrl from '../assets/bygram-ghost.png';
-import spyUrl from '../assets/bygram-spy.png';
+import settingsUrl from '../assets/bygram-settings-73059.png';
+import ghostUrl from '../assets/bygram-ghost-73059.png';
+import spyUrl from '../assets/bygram-spy-73059.png';
+import viewsUrl from '../assets/bygram-views-73059.png';
+import statisticsUrl from '../assets/bygram-statistics-73059.png';
 
 const pagePath = location.pathname.split('/').pop() || 'index.html';
 const activePage = pagePath === 'editions.html' ? 'features.html' : pagePath;
+const previewBuild = 73059;
+const previewVersion = '13.2.2';
+const previewLabel = `BYgram ${previewVersion} · сборка ${previewBuild}`;
 const numbers = new Intl.NumberFormat('ru-RU');
 const userPlural = new Intl.PluralRules('ru-RU');
 const userLabels = { one: 'пользователь', few: 'пользователя', many: 'пользователей', other: 'пользователей' };
@@ -34,6 +40,7 @@ function downloadPath(release) {
 function Header() {
   const links = [
     ['features.html', 'Возможности'],
+    ['features.html#screenshots', 'Скриншоты'],
     ['changelog.html', 'Что нового'],
   ];
   return <>
@@ -56,38 +63,41 @@ function Footer() {
   return <footer className="site-footer">
     <div className="container footer-inner">
       <div><a className="brand" href="index.html"><img src={logoUrl} width="35" height="35" alt="" /> BYgram</a>
-        <p>Неофициальный клиент Telegram для Android.</p></div>
+        <p>Неофициальный клиент Telegram для Android на основе исходного кода <a href="https://github.com/exteraSquad/exteraGram">exteraGram</a>.</p></div>
       <nav aria-label="Ссылки проекта">
         <a href="https://t.me/BYgram_community">Канал</a>
         <a href="https://t.me/BYgram_official">Чат поддержки</a>
+        <a href="https://github.com/BYsquad/exteraGram/tree/bygram/exteragram-base">Исходный код BYgram</a>
       </nav>
     </div>
   </footer>;
 }
 
 const highlights = [
-  { id: 'flame', title: 'Пламя в личных чатах', icon: Flame, text: 'В бете огонёк показывает, сколько дней подряд вы оба писали друг другу.' },
+  { id: 'flame', title: 'Пламя в личных чатах', icon: Flame, text: 'Огонёк отмечает серию дней, когда вы оба писали друг другу.' },
   { id: 'privacy', title: 'Приватность', icon: Shield, text: 'Настройте отметки о прочтении, скройте чаты или защитите их паролем.' },
+  { id: 'folders', title: 'Папки и закрепления', icon: Folder, text: 'Создавайте папки и закрепляйте чаты после достижения лимитов Telegram.' },
 ];
 
 function HomePage() {
-  const beta = usePublicData('beta.json', null);
   const users = usePublicData('users-count.php', null);
   return <main id="content">
     <section className="container hero">
       <div className="hero-copy">
-        <p className="platform"><Smartphone aria-hidden="true" /> Для Android · Debug{beta?.version && ` ${beta.version}`}</p>
-        <h1>Telegram<br />по вашим правилам.</h1>
-        <p className="lead">«Пламя» в личных чатах, локальные папки, настройки приватности и плагины exteraGram.</p>
+        <p className="platform"><Smartphone aria-hidden="true" /> Неофициальный клиент Telegram для Android</p>
+        <h1>BYgram для Android</h1>
+        <p className="lead">Режим призрака, история правок и «Пламя» в личных чатах. BYgram основан на exteraGram.</p>
         <div className="actions">
           <a className="button" href="download.html"><ArrowDownToLine aria-hidden="true" /> Скачать BYgram Debug</a>
+          <a className="button button--quiet" href="features.html#screenshots">Скриншоты</a>
         </div>
         {Number.isInteger(users?.count) && <p className="usage"><strong>{numbers.format(users.count)}</strong> <span>{userLabels[userPlural.select(users.count)]} BYgram</span></p>}
       </div>
-      <div className="hero-visual">
-        <div className="device device--front"><img src={ghostUrl} width="1080" height="2400" alt="Настройки режима призрака" fetchPriority="high" /></div>
-        <div className="flame-preview" aria-hidden="true"><Flame /><strong>12</strong><span>дней подряд</span></div>
-      </div>
+      <figure className="hero-visual">
+        <a className="device device--back" href="features.html#privacy"><img src={ghostUrl} width="1080" height="2400" alt="Режим призрака" /></a>
+        <a className="device device--front" href="features.html#settings"><img src={settingsUrl} width="1080" height="2400" alt="Настройки BYgram" fetchPriority="high" /></a>
+        <figcaption>{previewLabel}</figcaption>
+      </figure>
     </section>
     <section className="section section--light">
       <div className="container">
@@ -100,10 +110,6 @@ function HomePage() {
           </article>)}
         </div>
       </div>
-    </section>
-    <section className="container closing">
-      <div><h2>Меняйте то, чем пользуетесь каждый день.</h2><p>От видеообоев и оформления профиля до сохранения истории правок.</p></div>
-      <a className="button button--quiet" href="features.html">Посмотреть функции <ArrowRight aria-hidden="true" /></a>
     </section>
   </main>;
 }
@@ -120,6 +126,7 @@ function ReleaseCard({ release }) {
         <div><dt>Размер</dt><dd>{release.size}</dd></div>
       </dl>
       <a className="button" href={href} download><ArrowDownToLine aria-hidden="true" /> Скачать Debug APK</a>
+      {Number(release.version_code) < previewBuild && <p>Описание и скриншоты на сайте относятся к новой сборке {previewBuild}. Здесь доступна предыдущая сборка {release.version_code}.</p>}
       {release.sha256 && <details className="checksum"><summary>Контрольная сумма SHA-256</summary><code>{release.sha256}</code></details>}
     </> : <p role="status">Сборка пока недоступна.</p>}
   </section>;
@@ -138,46 +145,70 @@ function DownloadPage() {
   </main>;
 }
 
-const features = [
-  { id: 'flame', icon: Flame, title: 'Пламя в переписке', items: [
-    ['Серия личного чата', 'День засчитывается, когда оба собеседника отправляют сообщение. В 00:00 по Москве огонёк сереет, пока оба не напишут снова.'],
-    ['Анимация', 'На 1, 5, 10 и каждом следующем десятке чат заполняют пламя и искры.'],
-    ['Восстановление', 'Последнюю потерянную серию можно вернуть через меню чата. На пару доступно три восстановления за календарный месяц.'],
-  ] },
-  { id: 'privacy', icon: Shield, title: 'Приватность и защита', image: ghostUrl, alt: 'Настройки режима призрака', items: [
-    ['Режим призрака', 'Настройте отправку прочтения, видимость онлайна и печати. Прочтение можно отправлять после ответа, реакции или явного действия.'],
-    ['Скрытые чаты', 'Уберите выбранные диалоги из списка и поиска. Числовой код открывает отдельную вкладку.'],
-    ['Пароль для чата', 'Установите пароль на отдельный диалог. Уведомления защищённых чатов скрывают содержимое.'],
-  ] },
-  { id: 'history', icon: Blocks, title: 'История сообщений', image: spyUrl, alt: 'Параметры хранения истории', items: [
-    ['«Шпион»', 'Храните на устройстве удалённые сообщения и прежние версии отредактированных сообщений, которые BYgram успел получить.'],
-    ['Контроль хранения', 'Выбирайте, какие события сохранять, и очищайте локальную историю в настройках.'],
-  ] },
-  { id: 'folders', icon: Blocks, title: 'Локальные папки и закрепления', items: [
-    ['Папки', 'Папки сверх лимита Telegram хранятся на этом устройстве.'],
-    ['Закрепления', 'Дополнительные закрепления сохраняются локально.'],
-  ] },
-  { id: 'appearance', icon: Palette, title: 'Оформление exteraGram', items: [
-    ['Внешний вид', 'Темы Material You, паки иконок и альтернативные значки приложения.'],
-  ] },
-  { id: 'plugins', icon: Blocks, title: 'Плагины exteraGram', items: [
-    ['Установка', 'Используйте плагины формата .plugin в полной версии BYgram.'],
-  ], link: 'https://github.com/exteraSquad/exteraGram/tree/main/plugins-pysdk' },
+const screenshots = [
+  { id: 'settings', image: settingsUrl, label: 'Настройки BYgram' },
+  { id: 'privacy', image: ghostUrl, label: 'Режим призрака' },
+  { id: 'history', image: spyUrl, label: 'Шпион' },
+  { id: 'activity', image: viewsUrl, label: 'Просмотры профиля' },
+  { image: statisticsUrl, label: 'Сбор статистики' },
 ];
+
+const features = [
+  { id: 'settings', icon: Settings, title: 'Настройки BYgram', items: [
+    ['Где найти', 'В общих настройках приложения откройте «Настройки BYgram». Этот пункт расположен сразу под «Настройками exteraGram».'],
+  ] },
+  { id: 'privacy', icon: Shield, title: 'Приватность и защита чатов', items: [
+    ['Режим призрака', 'В этом клиенте можно отключить отметки о прочтении сообщений и просмотре историй, статус «в сети» и индикатор набора текста. Для сообщений можно отправлять отметку после ответа, реакции или нажатия кнопки бота.'],
+    ['Скрытые чаты', 'Уберите выбранные диалоги из списка и обычного поиска. Чтобы открыть скрытые чаты, введите заданный числовой код в поиске.'],
+    ['Запароленные чаты', 'Задайте отдельный пароль от четырёх символов для нужного диалога. BYgram скроет содержимое его уведомлений.'],
+  ] },
+  { id: 'history', icon: History, title: 'Локальная история сообщений', items: [
+    ['«Шпион»', 'Сохраняйте удалённые и исчезающие сообщения и предыдущие версии правок, которые успел получить этот клиент.'],
+    ['Параметры хранения', 'Отдельно включайте сохранение собственных удалённых сообщений, дат прочтения, последнего замеченного онлайна и уведомления об удалениях. Локальные данные можно очистить в этом же разделе.'],
+  ] },
+  { id: 'flame', icon: Flame, title: 'Пламя в личных чатах', items: [
+    ['Как считается серия', 'Огонёк загорается со счётчиком 1 на второй день подряд, когда оба собеседника отправили сообщение. Новый день начинается в 00:00 по Москве.'],
+    ['Где видно огонёк', 'Серия отображается в чате, списке чатов и профиле собеседника. На 1, 5 и каждом кратном десяти дне в чате появляется анимация.'],
+    ['Восстановление', 'Последнюю угасшую серию можно вернуть через меню чата. На пару доступно три восстановления за календарный месяц.'],
+  ] },
+  { id: 'folders', icon: Folder, title: 'Локальные папки и закрепления', items: [
+    ['Папки', 'Когда достигнут лимит Telegram, BYgram сохраняет дополнительные папки, их правила и порядок на текущем устройстве.'],
+    ['Закрепления', 'Дополнительные закрепления и их порядок сохраняются на текущем устройстве, в том числе в пользовательских папках и архиве.'],
+  ] },
+  { id: 'activity', icon: Eye, title: 'Активность и просмотры профиля', items: [
+    ['Система активности', 'Выбирайте пользователей BYgram, которым видна ваша активность, и настраивайте категории отдельно для каждого. Текущая активность хранится на сервере BYgram до 60 секунд.'],
+    ['Просмотры профиля', 'После включения функции видны визиты за последние семь дней. Пользователи с включённой функцией также могут видеть ваши посещения.'],
+  ] },
+];
+
 function FeaturesPage() {
+  useEffect(() => {
+    document.getElementById(location.hash.slice(1))?.scrollIntoView();
+  }, []);
+
   return <main id="content" className="container standard">
-    <header className="page-heading"><h1>Возможности BYgram</h1><p className="lead">Дополнительные настройки чатов, приватности и оформления.</p></header>
+    <header className="page-heading">
+      <h1>Возможности BYgram</h1>
+      <p className="lead">Чаты, приватность и история сообщений в {previewLabel}.</p>
+    </header>
+    <section id="screenshots" className="screenshots">
+      <h2>Скриншоты приложения</h2>
+      <p className="build-note">Снимки с Android. Нажмите на скриншот, чтобы открыть его в полном размере.</p>
+      <ul className="screenshot-grid">
+        {screenshots.map(({ id, image, label }) => <li key={image}>
+          <figure>
+            <a href={image} aria-label={`Открыть скриншот «${label}»`}>
+              <img src={image} width="1080" height="2400" alt={label} loading="lazy" />
+            </a>
+            <figcaption>{id ? <a href={`#${id}`}>{label}</a> : label}</figcaption>
+          </figure>
+        </li>)}
+      </ul>
+    </section>
     <div className="feature-list">
-      {features.map(({ id, title, icon: Icon, image, alt, caption, items, link }) => <section id={id} className={image ? 'feature feature--split' : 'feature'} key={id}>
-        <div>
-          <Icon className="feature-icon" aria-hidden="true" /><h2>{title}</h2>
-          <dl>{items.map(([label, text]) => <div key={label}><dt>{label}</dt><dd>{text}</dd></div>)}</dl>
-          {link && <a className="text-link" href={link}>Документация SDK <ArrowRight aria-hidden="true" /></a>}
-        </div>
-        {image && <figure>
-          <img src={image} width={1080} height={caption ? 1220 : 2400} alt={alt} loading="lazy" />
-          {caption && <figcaption>{caption}</figcaption>}
-        </figure>}
+      {features.map(({ id, title, icon: Icon, items }) => <section id={id} className="feature" key={id}>
+        <Icon className="feature-icon" aria-hidden="true" /><h2>{title}</h2>
+        <dl>{items.map(([label, text]) => <React.Fragment key={label}><dt>{label}</dt><dd>{text}</dd></React.Fragment>)}</dl>
       </section>)}
     </div>
   </main>;
@@ -188,13 +219,15 @@ function ChangelogPage() {
   return <main id="content" className="container standard">
     <header className="page-heading"><h1>Что нового</h1></header>
     <article className="news">
-      <h2>BYgram {beta?.version || '13.2.2'} · бета</h2>
+      <h2>{previewLabel}</h2>
       <ul>
-        <li>Новая основа exteraGram со своим оформлением и движком плагинов.</li>
-        <li>«Пламя» считает общие дни переписки и отмечает юбилеи анимацией на весь чат.</li>
-        <li>BYgram работает без регистрации устройства. Для доступа к сериям «Пламени» достаточно войти в свой аккаунт Telegram.</li>
+        <li>BYgram перешёл на основу exteraGram 13.2.2 с её настройками оформления и поддержкой файлов .plugin в сборке Full.</li>
+        <li>В отдельном меню «Настройки BYgram» собраны режим призрака, скрытые и запароленные чаты, «Шпион», активность и просмотры профиля.</li>
+        <li>В списке просмотров профиля появились аватарки. Добавление чатов и людей в настройках открывается кнопкой «+».</li>
+        <li>В разделе «Другое» можно отключить сбор статистики.</li>
       </ul>
-      <a className="text-link" href="download.html#beta">Перейти к бета-версии <ArrowRight aria-hidden="true" /></a>
+      <a className="text-link" href="features.html#screenshots">Скриншоты новой сборки <ArrowRight aria-hidden="true" /></a>
+      {downloadPath(beta) && <p className="build-note"><a href="download.html#beta">Доступная Debug-сборка BYgram {beta.version} ({beta.version_code})</a></p>}
     </article>
   </main>;
 }

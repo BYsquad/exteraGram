@@ -39,6 +39,7 @@ import androidx.core.content.ContextCompat;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.BygramBadgeController;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.Emoji;
@@ -746,7 +747,9 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         titleTextLargerCopyView.setTypeface(AndroidUtilities.bold());
         titleTextLargerCopyView.setLeftDrawableTopPadding(-dp(1.3f));
         titleTextLargerCopyView.setRightDrawable(titleTextView.getRightDrawable());
-        titleTextLargerCopyView.setRightDrawable2(titleTextView.getRightDrawable2());
+        Drawable secondTitleIcon = titleTextView.getRightDrawable2();
+        titleTextLargerCopyView.setRightDrawable2(secondTitleIcon instanceof BygramBadgeDrawable badge
+                ? badge.copy(getContext()) : secondTitleIcon);
         titleTextLargerCopyView.setRightDrawableOutside(titleTextView.getRightDrawableOutside());
         titleTextLargerCopyView.setLeftDrawable(titleTextView.getLeftDrawable());
         titleTextLargerCopyView.setText(titleTextView.getText());
@@ -982,6 +985,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
     private String rightDrawableContentDescription = null;
     private String rightDrawable2ContentDescription = null;
     private Drawable mutedIcon;
+    private boolean bygramResourceBadge;
 
     public void setTitleIcons(Drawable leftIcon, Drawable mutedIcon) {
         this.mutedIcon = mutedIcon;
@@ -992,7 +996,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             } else {
                 rightDrawable2ContentDescription = null;
             }
-            titleTextView.setRightDrawable2(mutedIcon);
+            setSecondTitleIcon(mutedIcon);
         }
         checkActionBar(true);
     }
@@ -1032,6 +1036,11 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
     }
 
     public void setTitle(CharSequence value, boolean scam, boolean fake, boolean verified, boolean premium, BadgeDTO badge, TLRPC.EmojiStatus emojiStatus, boolean animated) {
+        setTitle(value, scam, fake, verified, premium, badge, emojiStatus, animated, null);
+    }
+
+    public void setTitle(CharSequence value, boolean scam, boolean fake, boolean verified, boolean premium, BadgeDTO badge, TLRPC.EmojiStatus emojiStatus, boolean animated, TLRPC.Chat bygramChat) {
+        bygramResourceBadge = bygramChat != null && BygramBadgeController.hasBadge(bygramChat);
         if (value != null) {
             value = Emoji.replaceEmoji(value, titleTextView.getPaint().getFontMetricsInt(), false);
         }
@@ -1134,8 +1143,13 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             rightDrawable2ContentDescription = getString(R.string.NotificationsMuted);
         }
         titleTextView.setRightDrawable(drawable1);
-        titleTextView.setRightDrawable2(drawable2);
+        setSecondTitleIcon(drawable2);
         checkActionBar(animated);
+    }
+
+    private void setSecondTitleIcon(Drawable icon) {
+        titleTextView.setRightDrawable2(bygramResourceBadge
+                ? new BygramBadgeDrawable(getContext(), true, 16, icon) : icon);
     }
 
     private Drawable emojiStatusDefaultDrawable;

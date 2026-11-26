@@ -13,7 +13,7 @@ if ((int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 14000000) jsonResponse(['ok' => fa
 $raw = (string) file_get_contents('php://input', false, null, 0, 14000001);
 if (strlen($raw) > 14000000 || !is_array($request = json_decode($raw, true, 32))) jsonResponse(['ok' => false], 400);
 $action = (string) ($request['action'] ?? '');
-if (strlen($raw) > 16384)
+if (strlen($raw) > ($action === 'profile_background_put' ? 14000000 : 16384))
     jsonResponse(['ok' => false], 413);
 $GLOBALS['bygram_action'] = $action;
 $ip = (string) ($_SERVER['REMOTE_ADDR'] ?? 'unknown');
@@ -78,14 +78,28 @@ function replaceViewers(PDO $pdo, int $ownerId, array $viewers): void {
 }
 
 rateLimit($pdo, 'ip:' . $ip, 120);
-if ($action === 'device_seen') {
+if ($action === 'device_seen' || $action === 'device_statistics_disable') {
     require __DIR__ . '/client-devices.php';
     try {
-        reportClientDevice($pdo, $request);
+        if ($action === 'device_seen') reportClientDevice($pdo, $request);
+        else removeClientDevice($pdo, $request);
         jsonResponse(['ok' => true]);
     } catch (InvalidArgumentException) {
         jsonResponse(['ok' => false], 400);
     }
+}
+if ($action === 'statistics_set') {
+    $userId = filter_var($request['user_id'] ?? null, FILTER_VALIDATE_INT);
+    $enabled = $request['enabled'] ?? null;
+    if (!$userId || $userId < 1 || !is_bool($enabled)) jsonResponse(['ok' => false], 400);
+    requireAccountSession($userId);
+    $key = 'metrics_optout_' . $userId;
+    if ($enabled) {
+        $pdo->prepare('DELETE FROM app_settings WHERE setting_key=?')->execute([$key]);
+    } else {
+        saveAppSetting($key, '1');
+    }
+    jsonResponse(['ok' => true]);
 }
 $pdo->exec('DELETE FROM typing_nonces WHERE expires_at<UTC_TIMESTAMP()');
 $pdo->exec('DELETE FROM chat_activity WHERE expires_at<UTC_TIMESTAMP()');
@@ -221,14 +235,63 @@ if (str_starts_with($action, 'profile_views_')) {
     jsonResponse(['ok' => false], 400);
 }
 
+if ($action === 'profile_background_get') {
+    rateLimit($pdo, 'profile_background_read:' . $ip, 120);
+    $ownerId = filter_var($request['owner_id'] ?? null, FILTER_VALIDATE_INT);
+    if (!$ownerId || $ownerId < 1) jsonResponse(['ok' => false], 400);
+    $query = $pdo->prepare('SELECT revision,mime FROM profile_backgrounds WHERE telegram_id=?');
+    $query->execute([$ownerId]);
+    $image = $query->fetch();
+    $mode = appSetting('profile_background_full:' . $ownerId);
+    jsonResponse(['ok' => true, 'revision' => $image ? $image['revision'] : '', 'mime' => $image ? $image['mime'] : '',
+        'full_profile' => $mode === '' ? null : $mode === '1']);
+}
+if ($action === 'profile_background_mode_set') {
+    $userId = filter_var($request['user_id'] ?? null, FILTER_VALIDATE_INT);
+    $fullProfile = $request['full_profile'] ?? null;
+    if (!$userId || $userId < 1 || !is_bool($fullProfile)) jsonResponse(['ok' => false], 400);
+    requireAccountSession($userId);
+    rateLimit($pdo, 'profile_background_mode:' . $userId, 30);
+    $key = 'profile_background_full:' . $userId;
+    $value = $fullProfile ? '1' : '0';
+    if (($request['only_if_unset'] ?? false) === true) {
+        $pdo->prepare('INSERT INTO app_settings (setting_key,setting_value) VALUES (?,?) ON DUPLICATE KEY UPDATE setting_key=setting_key')->execute([$key, $value]);
+    } else {
+        saveAppSetting($key, $value);
+    }
+    jsonResponse(['ok' => true]);
+}
+if ($action === 'profile_background_put') {
+    $userId = filter_var($request['user_id'] ?? null, FILTER_VALIDATE_INT);
+    if (!$userId || $userId < 1 || !is_string($request['image'] ?? null)) jsonResponse(['ok' => false], 400);
+    requireAccountSession($userId);
+    rateLimit($pdo, 'profile_background:' . $userId, 6);
+    if ($request['image'] === '') {
+        $pdo->prepare('DELETE FROM profile_backgrounds WHERE telegram_id=?')->execute([$userId]);
+        jsonResponse(['ok' => true]);
+    }
+    require __DIR__ . '/profile-background-validation.php';
+    try { [$data, $mime, $revision] = profileBackgroundImage($request['image']); }
+    catch (InvalidArgumentException) { jsonResponse(['ok' => false, 'invalid_image' => true], 422); }
+    $pdo->beginTransaction();
+    if (is_bool($request['full_profile'] ?? null)) {
+        saveAppSetting('profile_background_full:' . $userId, $request['full_profile'] ? '1' : '0');
+    }
+    $pdo->prepare('INSERT INTO profile_backgrounds (telegram_id,image_data,mime,revision) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE image_data=VALUES(image_data),mime=VALUES(mime),revision=VALUES(revision)')->execute([$userId, $data, $mime, $revision]);
+    $pdo->commit();
+    jsonResponse(['ok' => true]);
+}
 if (in_array($action, ['flame_list', 'flame_get', 'flame_sync', 'flame_restore'], true)) {
     require __DIR__ . '/chat-flames.php';
     $idOptions = ['options' => ['min_range' => 1, 'max_range' => 0xffffffffff]];
     $userId = filter_var($request['user_id'] ?? null, FILTER_VALIDATE_INT, $idOptions);
-    $peerId = filter_var($request['peer_id'] ?? null, FILTER_VALIDATE_INT, $idOptions);
+    $peerId = filter_var($request['peer_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => -0xffffffffff, 'max_range' => 0xffffffffff]]);
     if (!$userId || ($action !== 'flame_list' && (!$peerId || $peerId === $userId))) jsonResponse(['ok' => false], 400);
     requireAccountSession($userId);
     rateLimit($pdo, 'flame:' . $userId, 60);
+    if ($peerId < 0 && !flameGroupMember($peerId, ($request['supergroup'] ?? false) === true, $userId)) {
+        jsonResponse(['ok' => false, 'group_unavailable' => true], 403);
+    }
     try {
         jsonResponse($action === 'flame_list' ? chatFlameList($pdo, $userId) : chatFlameRequest($pdo, $userId, $peerId, $action, $request));
     } catch (InvalidArgumentException) {

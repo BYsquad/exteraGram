@@ -67,6 +67,7 @@ public class TextCell extends FrameLayout implements Theme.Colorable {
     public int heightDp = 50;
     public int imageLeft = 21;
     public int valueImageRight;
+    private boolean wrapText;
     private boolean inDialogs;
     private boolean prioritizeTitleOverValue;
     private Theme.ResourcesProvider resourcesProvider;
@@ -179,6 +180,14 @@ public class TextCell extends FrameLayout implements Theme.Colorable {
         return valueImageView;
     }
 
+    public void setWrapText(boolean wrap) {
+        if (wrapText == wrap) return;
+        wrapText = wrap;
+        textView.setMaxLines(wrap ? Integer.MAX_VALUE : 1);
+        subtitleView.setMaxLines(wrap ? Integer.MAX_VALUE : 1);
+        requestLayout();
+    }
+
     public void setPrioritizeTitleOverValue(boolean prioritizeTitleOverValue) {
         if (this.prioritizeTitleOverValue != prioritizeTitleOverValue) {
             this.prioritizeTitleOverValue = prioritizeTitleOverValue;
@@ -197,7 +206,21 @@ public class TextCell extends FrameLayout implements Theme.Colorable {
         lastWidth = width;
 
         int valueWidth;
-        if (prioritizeTitleOverValue) {
+        if (wrapText) {
+            int start = imageView.getVisibility() == VISIBLE ? offsetFromImage : leftPadding;
+            int textWidth = MeasureSpec.makeMeasureSpec(Math.max(1, width - dp(start + leftPadding)), MeasureSpec.EXACTLY);
+            int textHeight = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+            textView.measure(textWidth, textHeight);
+            int contentHeight = textView.getMeasuredHeight();
+            if (subtitleView.getVisibility() == VISIBLE) {
+                subtitleView.measure(textWidth, textHeight);
+                contentHeight += subtitleView.getMeasuredHeight() + dp(heightDp > 50 ? 4 : 2);
+            }
+            height = Math.max(height, contentHeight + dp(20));
+            int zero = MeasureSpec.makeMeasureSpec(0, MeasureSpec.EXACTLY);
+            valueTextView.measure(zero, zero);
+            valueSpoilersTextView.measure(zero, zero);
+        } else if (prioritizeTitleOverValue) {
             textView.measure(MeasureSpec.makeMeasureSpec(width - dp(71 + leftPadding), MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(dp(20), MeasureSpec.EXACTLY));
             subtitleView.measure(MeasureSpec.makeMeasureSpec(width - dp(71 + leftPadding), MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(dp(20), MeasureSpec.EXACTLY));
             valueTextView.measure(MeasureSpec.makeMeasureSpec(width - dp(103 + leftPadding) - textView.getTextWidth(), LocaleController.isRTL ? MeasureSpec.AT_MOST : MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(20), MeasureSpec.EXACTLY));

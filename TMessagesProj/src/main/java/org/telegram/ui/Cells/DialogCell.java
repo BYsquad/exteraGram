@@ -1328,6 +1328,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
     private boolean bygramNeedsLayout;
     private BygramFlame.Badge lastFlameBadge;
     private boolean lastBygramBadge;
+    private android.text.style.ImageSpan bygramNameBadge;
+    private BygramBadgeDrawable pressedBygramNameBadge;
 
     public void refreshBygramFlame() {
         BygramFlame.Badge next = getBygramFlameBadge();
@@ -1351,18 +1353,21 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         if (isTransitionSupport) {
             return;
         }
+        boolean hasBygramBadge = user != null && !UserObject.isUserSelf(user) && BygramBadgeController.hasBadge(user)
+                || chat != null && BygramBadgeController.hasBadge(chat);
         if (isDialogCell) {
             BygramFlame.Badge flame = getBygramFlameBadge();
-            boolean badge = user != null && !UserObject.isUserSelf(user) && BygramBadgeController.hasBadge(user)
-                    || chat != null && BygramBadgeController.hasBadge(chat);
-            boolean bygramChanged = bygramFlameChanged(flame) || badge != lastBygramBadge || bygramNeedsLayout;
+            boolean bygramChanged = bygramFlameChanged(flame) || hasBygramBadge != lastBygramBadge || bygramNeedsLayout;
             lastFlameBadge = flame;
-            lastBygramBadge = badge;
+            lastBygramBadge = hasBygramBadge;
             bygramNeedsLayout = false;
             boolean needUpdate = updateHelper.update() || bygramChanged;
             if (!needUpdate && currentDialogFolderId == 0 && currentDialogCommunityId == 0 && encryptedChat == null) {
                 return;
             }
+        } else {
+            lastBygramBadge = hasBygramBadge;
+            lastFlameBadge = null;
         }
 
         if (useForceThreeLines || SharedConfig.useThreeLinesLayout || true) {
@@ -2618,11 +2623,13 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 nameString = ((String) nameString).replace('\n', ' ');
             }
             SpannableStringBuilder bygramSuffix = new SpannableStringBuilder();
+            bygramNameBadge = null;
             if (lastBygramBadge) {
                 BygramBadgeDrawable badge = new BygramBadgeDrawable(getContext(), chat != null, 16);
                 badge.setBounds(0, 0, badge.getIntrinsicWidth(), badge.getIntrinsicHeight());
                 bygramSuffix.append(' ').append("\uFFFC");
-                bygramSuffix.setSpan(new android.text.style.ImageSpan(badge), bygramSuffix.length() - 1,
+                bygramNameBadge = new android.text.style.ImageSpan(badge);
+                bygramSuffix.setSpan(bygramNameBadge, bygramSuffix.length() - 1,
                         bygramSuffix.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
             if (lastFlameBadge != null) {
@@ -4469,10 +4476,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 Theme.dialogs_lockDrawable.draw(canvas);
             }
 
-            int nameTop = dp(useForceThreeLines || SharedConfig.useThreeLinesLayout ? 10 : 14);
-            if ((!(useForceThreeLines || SharedConfig.useThreeLinesLayout) || isForumCell()) && hasTags()) {
-                nameTop -= dp(isForumCell() ? 8 : 9);
-            }
+            int nameTop = getNameTop();
             if (nameLayout != null) {
                 if (nameLayoutEllipsizeByGradient && !nameLayoutFits) {
                     if (nameLayoutEllipsizeLeft && fadePaint == null) {
@@ -6577,8 +6581,47 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         return super.dispatchTouchEvent(ev);
     }
 
+    private int getNameTop() {
+        boolean threeLines = useForceThreeLines || SharedConfig.useThreeLinesLayout;
+        int top = dp(threeLines ? 10 : 14);
+        return (!threeLines || isForumCell()) && hasTags() ? top - dp(isForumCell() ? 8 : 9) : top;
+    }
+
+    private BygramBadgeDrawable bygramNameBadgeAt(float x, float y) {
+        if (bygramNameBadge == null || nameLayout == null || translationX != 0
+                || !(nameLayout.getText() instanceof Spanned text)) return null;
+        int offset = text.getSpanStart(bygramNameBadge);
+        if (offset < 0) return null;
+        int line = nameLayout.getLineForOffset(offset);
+        int ellipsisStart = nameLayout.getLineStart(line) + nameLayout.getEllipsisStart(line);
+        if (nameLayout.getEllipsisCount(line) > 0 && offset >= ellipsisStart
+                && offset < ellipsisStart + nameLayout.getEllipsisCount(line)) return null;
+
+        BygramBadgeDrawable badge = (BygramBadgeDrawable) bygramNameBadge.getDrawable();
+        float left = nameLeft + nameLayoutTranslateX + nameLayout.getPrimaryHorizontal(offset);
+        if (nameLayout.isRtlCharAt(offset)) left -= badge.getIntrinsicWidth();
+        float top = getNameTop() + nameLayout.getLineTop(line);
+        if (nameLayoutEllipsizeByGradient && !nameLayoutFits && (x < nameLeft || x >= nameLeft + nameWidth)) return null;
+        return x >= left && x < left + badge.getIntrinsicWidth()
+                && y >= top && y < getNameTop() + nameLayout.getLineBottom(line) ? badge : null;
+    }
+
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            pressedBygramNameBadge = bygramNameBadgeAt(event.getX(), event.getY());
+            if (pressedBygramNameBadge != null) return true;
+        } else if (pressedBygramNameBadge != null) {
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                BygramBadgeDrawable badge = pressedBygramNameBadge;
+                pressedBygramNameBadge = null;
+                if (action == MotionEvent.ACTION_UP && badge == bygramNameBadgeAt(event.getX(), event.getY())) {
+                    badge.showNotice();
+                }
+            }
+            return true;
+        }
         if (rightFragmentOpenedProgress == 0 && !isTopic && !isShareToStoryCell && storyParams.checkOnTouchEvent(event, this)) {
             return true;
         }

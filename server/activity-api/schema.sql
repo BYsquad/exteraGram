@@ -57,3 +57,4 @@ CREATE TABLE IF NOT EXISTS account_login_attempts (
     confirmed_at DATETIME NULL,
     INDEX account_login_expiry (expires_at)
 ) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS profile_backgrounds (telegram_id BIGINT UNSIGNED PRIMARY KEY, image_data MEDIUMBLOB NOT NULL, mime VARCHAR(32) NOT NULL, revision CHAR(64) NOT NULL, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP) ENGINE=InnoDB;

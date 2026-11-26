@@ -891,6 +891,7 @@ public class ApplicationLoader extends Application implements Provider {
     }
 
     public void onResume() {
+        BygramDeviceReporter.report();
 
     }
 

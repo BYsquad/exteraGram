@@ -22,6 +22,7 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.DialogCell;
 import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalRecyclerView;
@@ -118,10 +119,24 @@ public final class BygramPrivateChatsActivity extends BasePreferencesActivity {
         return getString(hidden ? R.string.BygramHiddenChats : R.string.BygramProtectedChats);
     }
 
+    @Override protected void populateActionBarMenu(ActionBarMenu menu) {
+        menu.addItem(1, R.drawable.msg_add).setContentDescription(getString(R.string.SelectChat));
+    }
+
+    @Override protected void onActionBarItemClick(int id) {
+        if (id != 1) return;
+        if (hidden && !BygramChatPrivacy.hasPin(currentAccount)) {
+            setPin(this::openChatPicker);
+        } else {
+            openChatPicker();
+        }
+    }
+
+    @Override protected boolean wrapSettingsText() { return true; }
+
     @Override protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
 
         ids.clear();
-        items.add(UItem.asButton(2, getString(R.string.SelectChat)));
         items.add(UItem.asHeader(getString(hidden ? R.string.BygramHiddenChats : R.string.BygramProtectedChats)).setId(-1));
         for (TLRPC.Dialog dialog : getMessagesController().getAllDialogs()) {
             long id = dialog.id;
@@ -158,6 +173,8 @@ public final class BygramPrivateChatsActivity extends BasePreferencesActivity {
             items.add(item);
         }
         if (hidden) {
+            if (!ids.isEmpty()) items.add(UItem.asShadow());
+            items.add(UItem.asHeader(getString(R.string.PrivacySettings)));
             items.add(UItem.asButton(1, getString(BygramChatPrivacy.hasPin(currentAccount)
                     ? R.string.BygramChangePin : R.string.BygramSetPin)));
         }
@@ -165,10 +182,6 @@ public final class BygramPrivateChatsActivity extends BasePreferencesActivity {
     }
 
     @Override protected void onClick(UItem item, View view, int position, float x, float y) {
-        if (item.id == 2) {
-            openChatPicker();
-            return;
-        }
         if (item.id == 1 && hidden) {
             if (BygramChatPrivacy.hasPin(currentAccount)) {
                 askSecret(getString(R.string.BygramHiddenPin), true, old -> {
@@ -189,31 +202,24 @@ public final class BygramPrivateChatsActivity extends BasePreferencesActivity {
     }
 
     private void openChatPicker() {
-        android.os.Bundle args = new android.os.Bundle();
-        args.putBoolean("onlySelect", true);
-        args.putBoolean("checkCanWrite", false);
-        args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_DEFAULT);
-        DialogsActivity picker = new DialogsActivity(args);
-        picker.setDelegate((fragment, dids, message, param, notify, scheduleDate, scheduleRepeatPeriod, topicsFragment) -> {
-            if (dids.isEmpty()) return false;
-            long id = dids.get(0).dialogId;
-            if (id == 0 || DialogObject.isEncryptedDialog(id)) return false;
-            fragment.finishFragment();
+        BygramPeerPickerActivity picker = new BygramPeerPickerActivity(getString(R.string.SelectChat), hidden, ids -> {
             if (hidden) {
-                if (BygramChatPrivacy.hasPin(currentAccount)) {
-                    BygramChatPrivacy.setHidden(currentAccount, id, true);
-                    refreshPreferenceItems();
-                } else {
-                    AndroidUtilities.runOnUIThread(() -> setPin(() -> {
-                        BygramChatPrivacy.setHidden(currentAccount, id, true);
-                        refreshPreferenceItems();
-                    }), 300);
-                }
-            } else if (!BygramChatPrivacy.isProtected(currentAccount, id)) {
-                AndroidUtilities.runOnUIThread(() -> setPassword(id), 300);
+                if (!BygramChatPrivacy.hasPin(currentAccount)) return;
+                for (long id : ids) BygramChatPrivacy.setHidden(currentAccount, id, true);
+                refreshPreferenceItems();
+            } else {
+                setPassword(ids.get(0));
             }
-            return true;
         });
+        picker.setCurrentAccount(currentAccount);
+        for (TLRPC.Dialog dialog : getMessagesController().getAllDialogs()) {
+            if (hidden ? BygramChatPrivacy.isHidden(currentAccount, dialog.id) : BygramChatPrivacy.isProtected(currentAccount, dialog.id)) continue;
+            if (DialogObject.isUserDialog(dialog.id)) {
+                picker.add(dialog.id, getMessagesController().getUser(dialog.id));
+            } else if (DialogObject.isChatDialog(dialog.id)) {
+                picker.add(dialog.id, getMessagesController().getChat(-dialog.id));
+            }
+        }
         presentFragment(picker);
     }
 
@@ -223,8 +229,8 @@ public final class BygramPrivateChatsActivity extends BasePreferencesActivity {
         askSecret(getString(R.string.BygramSetPin), true, pin -> {
             if (!pin.matches("[0-9]{4,}")) { privacyError(); return; }
             BygramChatPrivacy.setPin(currentAccount, pin);
-            if (onSuccess != null) onSuccess.run();
             refreshPreferenceItems();
+            if (onSuccess != null) AndroidUtilities.runOnUIThread(onSuccess);
         });
     }
 

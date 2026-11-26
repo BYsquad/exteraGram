@@ -246,6 +246,7 @@ public final class BygramAccountService {
                         return;
                     }
                     accountSessions().edit().putString("token_" + userId, credential).remove("exchange_" + userId).apply();
+                    BygramDeviceReporter.reportAccount(userId);
                     callback.run(true);
                 });
             }));
@@ -256,14 +257,29 @@ public final class BygramAccountService {
         register(userId, callback);
     }
 
+    static java.net.URL profileBackgroundUrl(long userId, String revision) throws java.net.MalformedURLException {
+        return new java.net.URL(ENDPOINT + "profile-background.php?user_id=" + userId + "&v=" + revision);
+    }
+
+    public static void profileBackgroundRequest(long userId, JSONObject data, boolean write, Utilities.Callback<JSONObject> callback) {
+        request(userId, data, write, callback::run);
+    }
+
     static void flameRequest(long userId, JSONObject data, Utilities.Callback<JSONObject> callback) {
+        BygramDeviceReporter.reportAccount(userId);
         request(userId, data, true, callback::run);
     }
 
-    static void reportDevice(String deviceId, String model, String version, int androidApi, Utilities.Callback<Boolean> callback) {
-        request(0, json("action", "device_seen", "device_id", deviceId, "model", model,
-                "version", version, "android_api", androidApi), false,
+    static void reportStatisticsPreference(long userId, boolean enabled, Utilities.Callback<Boolean> callback) {
+        sendRequest(userId, json("action", "statistics_set", "user_id", userId, "enabled", enabled), true,
                 response -> callback.run(response != null && response.optBoolean("ok")));
+    }
+
+    static void reportDevice(String deviceId, boolean enabled, String model, String version, int androidApi, Utilities.Callback<Boolean> callback) {
+        JSONObject data = enabled
+                ? json("action", "device_seen", "device_id", deviceId, "model", model, "version", version, "android_api", androidApi)
+                : json("action", "device_statistics_disable", "device_id", deviceId);
+        request(0, data, false, response -> callback.run(response != null && response.optBoolean("ok")));
     }
 
     public static void openAccountLogin(Context context, String url) {
@@ -292,6 +308,7 @@ public final class BygramAccountService {
                             String credential = response.optString("account_token", "");
                             if (!credential.isEmpty()) {
                                 accountSessions().edit().remove(key).putString("token_" + userId, credential).apply();
+                                BygramDeviceReporter.reportAccount(userId);
                             } else if (response.optBoolean("expired")) {
                                 accountSessions().edit().remove(key).apply();
                             }
@@ -310,6 +327,7 @@ public final class BygramAccountService {
             String action = data.optString("action");
             boolean settingsRequest = "typing_put".equals(action) || "profile_background_put".equals(action)
                     || "profile_views_set".equals(action) || "profile_views_list".equals(action);
+            boolean backgroundRequest = action.startsWith("profile_background_");
             int status = 0;
             try {
                 URL url = new URL(ENDPOINT);
@@ -317,7 +335,7 @@ public final class BygramAccountService {
                 boolean store = action.startsWith("store_");
                 if (store) connection.setInstanceFollowRedirects(false);
                 connection.setRequestMethod("POST");
-                connection.setConnectTimeout(7000); connection.setReadTimeout(store ? 25000 : 7000);
+                connection.setConnectTimeout(7000); connection.setReadTimeout(store || backgroundRequest ? 25000 : 7000);
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
                 byte[] body = data.toString().getBytes(StandardCharsets.UTF_8);
                 if (useAccount) {
@@ -333,7 +351,7 @@ public final class BygramAccountService {
                     char[] buffer = new char[8192];
                     int count;
                     while ((count = reader.read(buffer)) != -1) {
-                        if (store && response.length() + count > 14_000_000) throw new java.io.IOException("Store response exceeds limit");
+                        if ((store || backgroundRequest) && response.length() + count > 14_000_000) throw new java.io.IOException("Store response exceeds limit");
                         response.append(buffer, 0, count);
                     }
                     if (response.length() > 0) result = new JSONObject(response.toString());

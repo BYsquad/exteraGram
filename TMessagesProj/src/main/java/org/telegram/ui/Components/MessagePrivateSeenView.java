@@ -25,6 +25,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.AppGlobalConfig;
 import org.telegram.messenger.ContactsController;
+import org.telegram.messenger.BygramSpyMode;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
@@ -155,7 +156,12 @@ public class MessagePrivateSeenView extends FrameLayout {
         req.peer = MessagesController.getInstance(currentAccount).getInputPeer(dialogId);
         req.msg_id = messageId;
         ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
-            if (err != null) {
+            int observedDate = err != null ? BygramSpyMode.getReadDate(currentAccount, dialogId, messageId) : 0;
+            if (observedDate > 0) {
+                isPremiumLocked = false;
+                valueTextView.setText(LocaleController.formatString(R.string.BygramObservedReadDate, LocaleController.formatPmSeenDate(observedDate)));
+                premiumTextView.setVisibility(View.GONE);
+            } else if (err != null) {
                 if ("USER_PRIVACY_RESTRICTED".equals(err.text)) {
                     valueTextView.setText(LocaleController.getString(R.string.PmReadUnknown));
                     premiumTextView.setVisibility(View.GONE);
@@ -169,6 +175,7 @@ public class MessagePrivateSeenView extends FrameLayout {
                     BulletinFactory.of(Bulletin.BulletinWindow.make(getContext()), resourcesProvider).showForError(err);
                 }
             } else if (res instanceof TLRPC.TL_outboxReadDate) {
+                isPremiumLocked = false;
                 TLRPC.TL_outboxReadDate r = (TLRPC.TL_outboxReadDate) res;
                 valueTextView.setText(LocaleController.formatPmSeenDate(r.date));
                 premiumTextView.setVisibility(View.GONE);

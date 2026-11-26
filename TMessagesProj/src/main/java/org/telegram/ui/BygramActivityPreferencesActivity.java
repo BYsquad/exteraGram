@@ -12,25 +12,55 @@ import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserObject;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.Map;
 
 public final class BygramActivityPreferencesActivity extends BasePreferencesActivity {
     private final ArrayList<Long> userIds = new ArrayList<>();
-    private boolean expanded;
 
     @Override public String getTitle() {
         return getString(R.string.BygramShareActivity);
     }
 
+    @Override protected void populateActionBarMenu(ActionBarMenu menu) {
+        menu.addItem(1, R.drawable.msg_add).setContentDescription(getString(R.string.BygramActivityAddUsers));
+    }
+
+    @Override protected void onActionBarItemClick(int id) {
+        if (id != 1) return;
+        BygramPeerPickerActivity picker = new BygramPeerPickerActivity(getString(R.string.BygramActivityAddUsers), true, ids -> {
+            Map<Long, Integer> selected = BygramActivitySettings.getActivityPermissions(currentAccount);
+            for (long userId : ids) {
+                if (!selected.containsKey(userId)) {
+                    BygramActivitySettings.setActivityPermissions(currentAccount, userId, BygramActivitySettings.ACTIVITY_CHAT);
+                }
+            }
+            BygramActivityController.updateViewers(currentAccount);
+            refreshPreferenceItems();
+        });
+        picker.setCurrentAccount(currentAccount);
+        Map<Long, Integer> selected = BygramActivitySettings.getActivityPermissions(currentAccount);
+        for (TLRPC.TL_contact contact : getContactsController().contacts) addCandidate(picker, selected, contact.user_id);
+        for (TLRPC.Dialog dialog : getMessagesController().getAllDialogs()) addCandidate(picker, selected, dialog.id);
+        presentFragment(picker);
+    }
+
+    private void addCandidate(BygramPeerPickerActivity picker, Map<Long, Integer> selected, long id) {
+        if (!DialogObject.isUserDialog(id) || id == getUserConfig().getClientUserId() || selected.containsKey(id)) return;
+        TLRPC.User user = getMessagesController().getUser(id);
+        if (user != null && !user.bot && !UserObject.isDeleted(user)) picker.add(id, user);
+    }
+
+    @Override protected boolean wrapSettingsText() { return true; }
+
     @Override protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         userIds.clear();
         Map<Long, Integer> selected = BygramActivitySettings.getActivityPermissions(currentAccount);
-        HashSet<Long> added = new HashSet<>();
+        items.add(UItem.asHeader(getString(R.string.PrivacySettings)));
         items.add(UItem.asCheck(800, getString(R.string.BygramShareActivityMaster)).setChecked(BygramActivitySettings.isActivityEnabled(currentAccount)));
         items.add(UItem.asShadow(getString(R.string.BygramShareActivityPrivacy)));
         items.add(UItem.asHeader(getString(R.string.BygramActivitySelectedUsers)).setId(-1));
@@ -40,30 +70,12 @@ public final class BygramActivityPreferencesActivity extends BasePreferencesActi
             int index = userIds.size();
             userIds.add(entry.getKey());
             int permissions = entry.getValue();
-            items.add(UItem.asButtonCheck(100_000 + index, title, activityPermissionsSummary(permissions)).setChecked(true));
+            items.add(UItem.asCheck(100_000 + index, title, activityPermissionsSummary(permissions), true).setChecked(true));
             items.add(UItem.asCheck(200_000 + index, "    " + getString(R.string.BygramActivityDialogsPermission)).setChecked((permissions & BygramActivitySettings.ACTIVITY_DIALOGS) != 0));
             items.add(UItem.asCheck(300_000 + index, "    " + getString(R.string.BygramActivityProfilePermission)).setChecked((permissions & BygramActivitySettings.ACTIVITY_PROFILE) != 0));
             items.add(UItem.asCheck(400_000 + index, "    " + getString(R.string.BygramActivityChatPermission)).setChecked((permissions & BygramActivitySettings.ACTIVITY_CHAT) != 0));
-            added.add(entry.getKey());
         }
         if (selected.isEmpty()) items.add(UItem.asShadow(getString(R.string.BygramActivityNobodySelected)));
-        items.add(UItem.asButton(900, getString(R.string.BygramActivityAddUsers), expanded ? getString(R.string.BygramActivityHideUsers) : null));
-        if (expanded) {
-            items.add(UItem.asHeader(getString(R.string.BygramActivityAvailableUsers)).setId(-2));
-            ArrayList<Long> candidates = new ArrayList<>();
-            for (TLRPC.TL_contact contact : getContactsController().contacts) candidates.add(contact.user_id);
-            for (TLRPC.Dialog dialog : getMessagesController().getAllDialogs()) candidates.add(dialog.id);
-            for (long userId : candidates) {
-                if (!DialogObject.isUserDialog(userId) || !added.add(userId) || userId == getUserConfig().getClientUserId()) continue;
-                TLRPC.User user = getMessagesController().getUser(userId);
-                if (user != null && (user.bot || UserObject.isDeleted(user))) continue;
-                if (user == null) continue;
-                String title = activityUserTitle(userId, user);
-                int index = userIds.size();
-                userIds.add(userId);
-                items.add(UItem.asCheck(100_000 + index, title).setChecked(false));
-            }
-        }
         items.add(UItem.asShadow(getString(R.string.BygramShareActivityInfo)));
     }
 
@@ -86,11 +98,6 @@ public final class BygramActivityPreferencesActivity extends BasePreferencesActi
             boolean enabled = !BygramActivitySettings.isActivityEnabled(currentAccount);
             BygramActivitySettings.setActivityEnabled(currentAccount, enabled);
             if (enabled) BygramActivityController.updateViewers(currentAccount); else BygramActivityController.clear(currentAccount);
-            refreshPreferenceItems();
-            return;
-        }
-        if (item.id == 900) {
-            expanded = !expanded;
             refreshPreferenceItems();
             return;
         }

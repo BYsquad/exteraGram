@@ -74,7 +74,7 @@ function flameCalendar(): array {
 function chatFlameList(PDO $pdo, int $userId): array {
     [$today, , $secondsToMidnight] = flameCalendar();
     $query = $pdo->prepare('SELECT user_low, user_high, days, last_day FROM chat_flames
-        WHERE (user_low=? OR user_high=?) AND days>0 AND last_day>=?');
+        WHERE user_low>0 AND (user_low=? OR user_high=?) AND days>0 AND last_day>=?');
     $query->execute([$userId, $userId, $today - 1]);
     $flames = [];
     while ($row = $query->fetch(PDO::FETCH_ASSOC)) {
@@ -84,9 +84,30 @@ function chatFlameList(PDO $pdo, int $userId): array {
     return ['ok' => true, 'day' => $today, 'seconds_to_midnight' => $secondsToMidnight, 'flames' => (object) $flames];
 }
 
+function flameGroupMember(int $peerId, bool $supergroup, int $userId): bool {
+    $chatId = $supergroup ? (string) ($peerId - 1_000_000_000_000) : (string) $peerId;
+    $key = 'bygram-flame-member:' . $chatId . ':' . $userId;
+    if (function_exists('apcu_fetch') && apcu_fetch($key) === true) return true;
+    $token = (string) (appConfig()['bot_token'] ?? '');
+    if ($token === '' || !function_exists('curl_init')) return false;
+    $url = 'https://api.telegram.org/bot' . $token . '/getChatMember?' . http_build_query(['chat_id' => $chatId, 'user_id' => $userId]);
+    $curl = curl_init($url);
+    curl_setopt_array($curl, [CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 2, CURLOPT_TIMEOUT => 4]);
+    $data = curl_exec($curl);
+    curl_close($curl);
+    $member = is_string($data) ? (json_decode($data, true)['result'] ?? null) : null;
+    $status = $member['status'] ?? '';
+    $verified = in_array($status, ['creator', 'administrator', 'member'], true)
+        || $status === 'restricted' && ($member['is_member'] ?? false) === true;
+    if ($verified && function_exists('apcu_store')) apcu_store($key, true, 120);
+    return $verified;
+}
+
 function chatFlameRequest(PDO $pdo, int $userId, int $peerId, string $action, array $request): array {
     [$today, $month, $secondsToMidnight] = flameCalendar();
-    $pair = [min($userId, $peerId), max($userId, $peerId)];
+    $groupId = abs($peerId) + (($request['supergroup'] ?? false) === true ? 1_000_000_000_000 : 0);
+    $pair = $peerId < 0 ? [0, $groupId] : [min($userId, $peerId), max($userId, $peerId)];
+    $eventKey = 'flame_restore_event:' . implode(':', $pair);
     $empty = array_fill_keys(['last_day', 'days', 'lost_day', 'lost_days', 'restore_month', 'restores', 'revision'], 0);
     $write = $action !== 'flame_get' && ($request['day'] ?? null) === $today;
     $ranges = $action === 'flame_sync' && $write ? flameRanges($request['ranges'] ?? null, $today) : [];
@@ -113,10 +134,19 @@ function chatFlameRequest(PDO $pdo, int $userId, int $peerId, string $action, ar
             $state['revision']++;
             $pdo->prepare('UPDATE chat_flames SET last_day=?,days=?,lost_day=?,lost_days=?,restore_month=?,restores=?,revision=? WHERE user_low=? AND user_high=?')
                 ->execute([...array_values($state), ...$pair]);
+            if ($restored) {
+                $event = json_encode(['user_id' => $userId, 'lost_day' => $request['lost_day'],
+                    'day' => $today, 'remaining' => 3 - $state['restores']]);
+                $pdo->prepare('INSERT INTO app_settings (setting_key,setting_value) VALUES (?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)')
+                    ->execute([$eventKey, $event]);
+            }
         }
         $pdo->commit();
     }
+    $event = $pdo->prepare('SELECT setting_value FROM app_settings WHERE setting_key=?');
+    $event->execute([$eventKey]);
     return flameDays($state, $today, $month) + [
+        'restore_event' => json_decode((string) $event->fetchColumn(), true),
         'ok' => true,
         'restored' => $restored,
         'seconds_to_midnight' => $secondsToMidnight,

@@ -603,7 +603,12 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
          * The opaque background of a fullscreen page, within the page and the overscan of its list:
          * the pages do not clip, the other one is right next to it during a swipe.
          */
+        protected boolean hasHostWallpaper() {
+            return false;
+        }
+
         private void drawPageBackground(Canvas canvas) {
+            if (hasHostWallpaper()) return;
             final int top = Math.min(0, listView.getTop());
             final int bottom = Math.max(getHeight(), listView.getBottom());
             // the photos page is wider by its -1dp margins and its neighbour moves by that width: past the sides,
@@ -2570,6 +2575,11 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             final MediaPage mediaPage = new MediaPage(context) {
 
                 @Override
+                protected boolean hasHostWallpaper() {
+                    return SharedMediaLayout.this.hasHostWallpaper();
+                }
+
+                @Override
                 public void setTranslationX(float translationX) {
                     final float oldTranslationX = getTranslationX();
                     super.setTranslationX(translationX);
@@ -2705,6 +2715,11 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             mediaPages[a].itemAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
             mediaPages[a].itemAnimator.setSupportsChangeAnimations(false);
             mediaPages[a].listView = new SharedMediaListView(context, resourcesProvider) {
+
+                @Override
+                public void drawBackgroundRect(Canvas canvas, RectF rect, float topRadius, float bottomRadius, float alpha) {
+                    super.drawBackgroundRect(canvas, rect, topRadius, bottomRadius, alpha * (hasHostWallpaper() ? 0.83f : 1f));
+                }
 
                 @Override
                 public RecyclerListView.FastScrollAdapter getMovingAdapter() {
@@ -3509,8 +3524,10 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
 
                 @Override
                 protected void onDraw(Canvas canvas) {
-                    backgroundPaint.setColor(getThemedColor(Theme.key_windowBackgroundWhite));
-                    canvas.drawRect(0, 0, getMeasuredWidth(), getMeasuredHeight(), backgroundPaint);
+                    if (!hasHostWallpaper()) {
+                        backgroundPaint.setColor(getThemedColor(Theme.key_windowBackgroundWhite));
+                        canvas.drawRect(0, 0, getMeasuredWidth(), getMeasuredHeight(), backgroundPaint);
+                    }
                     super.onDraw(canvas);
                 }
             };
@@ -4272,6 +4289,20 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             fragmentContextView.draw(canvas);
             fragmentContextView.setDrawOverlay(false);
             canvas.restore();
+        }
+    }
+
+    protected boolean hasHostWallpaper() {
+        return false;
+    }
+
+    public void invalidateHostWallpaper() {
+        for (MediaPage page : mediaPages) {
+            if (page != null) {
+                page.invalidate();
+                page.listView.invalidate();
+                page.progressView.invalidate();
+            }
         }
     }
 

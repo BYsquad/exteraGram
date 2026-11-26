@@ -2105,6 +2105,9 @@ public class StarsController {
                     Utilities.stageQueue.postRunnable(() -> {
                         messagesController.processUpdates((TLRPC.Updates) response, false);
                     });
+                    if (error == null) {
+                        messagesController.markDialogAsReadByAction(messageObject.getDialogId(), messageObject.getId(), messageObject.getTopicId());
+                    }
                 } else if (error != null) {
                     messageObject.addPaidReactions((int) -amount, wasChosen, getPeerId());
                     NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.didUpdateReactions, messageObject.getDialogId(), messageObject.getId(), messageObject.messageOwner.reactions);

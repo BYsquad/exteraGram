@@ -160,6 +160,8 @@ import com.exteragram.messenger.plugins.utils.MenuContextBuilder;
 import com.exteragram.messenger.profilecolor.ProfileColorTheme;
 import com.exteragram.messenger.profilecolor.ProfilePhotoFade;
 import com.exteragram.messenger.regdate.RegDateController;
+import com.exteragram.messenger.preferences.BygramPreferencesActivity;
+import com.exteragram.messenger.preferences.BygramProfileViewsPreferencesActivity;
 import com.exteragram.messenger.preferences.MainPreferencesActivity;
 import com.exteragram.messenger.preferences.utils.SettingsRegistry;
 import com.exteragram.messenger.utils.AppUtils;
@@ -547,6 +549,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private ActionBarMenuItem callItem;
     private ActionBarMenuItem videoCallItem;
     private ActionBarMenuItem editItem;
+    private ActionBarMenuItem bygramProfileViewsItem;
     private ActionBarMenuItem otherItem;
     private ActionBarMenuItem searchItem;
     private ActionBarMenuSubItem editColorItem;
@@ -711,6 +714,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private final static int disable_no_forwards = 47;
     private final static int send_money = 48;
     private final static int export_history = 49;
+    private final static int bygram_profile_views = 50;
 
     private final static int add_to_folder = 99;
 
@@ -738,6 +742,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private int settingsSectionRow;
     private int settingsSectionRow2;
     private int exteraRow;
+    private int bygramPreferencesRow;
     private int notificationRow;
     private int languageRow;
     private int privacyRow;
@@ -1336,6 +1341,54 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
+    private org.telegram.messenger.BygramProfileBackground.Background bygramBackground;
+    private int bygramBackgroundRequest;
+
+    private void loadBygramBackground() {
+        int request = ++bygramBackgroundRequest;
+        org.telegram.messenger.BygramProfileBackground.load(getUserConfig().getClientUserId(), userId, background -> {
+            if (request != bygramBackgroundRequest || fragmentView == null || topView == null) return;
+            if (bygramBackground != null) bygramBackground.detach();
+            bygramBackground = background;
+            if (background != null) background.attach(fragmentView);
+            if (sharedMediaLayout != null) sharedMediaLayout.invalidateHostWallpaper();
+            listView.invalidate();
+            glassEngine.invalidate();
+            topView.invalidate();
+            fragmentView.invalidate();
+        });
+    }
+
+    private boolean hasStretchedBygramBackground() {
+        return bygramBackground != null && bygramBackground.stretch;
+    }
+
+    private void drawBygramBackground(Canvas canvas) {
+        if (bygramBackground == null || listView == null) return;
+        int width = fragmentView.getWidth();
+        int height = fragmentView.getHeight();
+        int surface = getThemedColor(Theme.key_windowBackgroundGray);
+        int tint = Theme.multAlpha(surface, 0.24f);
+        canvas.drawColor(surface);
+        if (bygramBackground.stretch) {
+            bygramBackground.draw(canvas, width, height, tint);
+            return;
+        }
+        int header = getHeaderBarHeight();
+        int visible = Math.max(0, Math.min(height,
+                (int) ((header + extraHeight + searchTransitionOffset) * (1f - mediaHeaderAnimationProgress))));
+        if (visible == 0) return;
+        int save = canvas.save();
+        canvas.clipRect(0, 0, width, visible);
+        bygramBackground.draw(canvas, width, Math.max(visible, header + getHeaderExtraHeight()), tint);
+        canvas.restoreToCount(save);
+    }
+
+    private void pauseBygramBackground() {
+        bygramBackgroundRequest++;
+        if (bygramBackground != null) bygramBackground.detach();
+    }
+
     private class TopView extends FrameLayout {
 
         private int currentColor;
@@ -1502,10 +1555,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 paint.setColor(currentColor);
                 updateBackgroundPaint();
                 final float progressToGradient = (playProfileAnimation == 0 ? 1f : avatarAnimationProgress) * hasColorAnimated.set(hasColorById);
-                if (progressToGradient < 1) {
+                if (progressToGradient < 1 && bygramBackground == null) {
                     canvas.drawRect(0, 0, getMeasuredWidth(), y1, paint);
                 }
-                if (progressToGradient > 0) {
+                if (progressToGradient > 0 && bygramBackground == null) {
                     backgroundPaint.setAlpha((int) (0xFF * progressToGradient));
                     canvas.drawRect(0, 0, getMeasuredWidth(), y1, backgroundPaint);
                 }
@@ -1536,7 +1589,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
             // below y1 the header of the media is glass: headerFadeView, over the pages. Leaving the media the header
             // grows back from the top while the media are already lower: the screen's background between them
-            if (mediaHeaderAnimationProgress > 0 && y1 < v && sharedMediaLayout != null && sharedMediaLayout.isAttachedToWindow()) {
+            if ((bygramBackground == null || !bygramBackground.stretch) && mediaHeaderAnimationProgress > 0 && y1 < v && sharedMediaLayout != null && sharedMediaLayout.isAttachedToWindow()) {
                 // the pages reach up past their top by their overscan, the gap is only above it
                 final float mediaTop = listView.getY() + sharedMediaLayout.getY() - pagesOverscanTop;
                 if (mediaTop > y1) {
@@ -2636,6 +2689,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     @Override
     public void onFragmentDestroy() {
+        pauseBygramBackground();
         if (viewPositionWatcher != null) {
             viewPositionWatcher.shutdown();
             viewPositionWatcher = null;
@@ -2857,6 +2911,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         return;
                     }
                     finishFragment();
+                } else if (id == bygram_profile_views) {
+                    presentFragment(new BygramProfileViewsPreferencesActivity());
                 } else if (id == block_contact) {
                     onBlockContactClicked(false);
                 } else if (id == add_contact) {
@@ -3602,7 +3658,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
             @Override
             protected void dispatchDraw(Canvas canvas) {
-                if (headerBlurFactor > 0) {
+                drawBygramBackground(canvas);
+                if (headerBlurFactor > 0 && !hasStretchedBygramBackground()) {
                     // the colored header fades out: the rows go under the header, on the screen's background
                     grayPaint.setColor(getThemedColor(Theme.key_windowBackgroundGray));
                     canvas.drawRect(0, 0, getMeasuredWidth(), getHeaderBarHeight(), grayPaint);
@@ -3984,6 +4041,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         createHeaderBar(context);
         sharedMediaLayout = new SharedMediaLayout(context, did, sharedMediaPreloader, userInfo != null ? userInfo.common_chats_count : 0, sortedUsers, chatInfo, userInfo, initialTab, initialStoryAlbum, this, this, SharedMediaLayout.VIEW_TYPE_PROFILE_ACTIVITY, resourcesProvider, getBaseSimpleGlass().factory) {
             @Override
+            protected boolean hasHostWallpaper() {
+                return hasStretchedBygramBackground();
+            }
+
+            @Override
             protected int processColor(int color) {
                 return dontApplyPeerColor(color, false);
             }
@@ -4347,6 +4409,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             editItem = menu.addItem(edit_channel, R.drawable.group_edit_profile);
             editItem.setContentDescription(LocaleController.getString(R.string.Edit));
         }
+        bygramProfileViewsItem = myProfile
+                ? menu.addItem(bygram_profile_views, R.drawable.msg_views, resourcesProvider)
+                : null;
+        if (bygramProfileViewsItem != null) {
+            bygramProfileViewsItem.setContentDescription(getString(R.string.BygramProfileViews));
+        }
         otherItem = menu.addItem(10, R.drawable.ic_ab_other, resourcesProvider);
 
         otherItem.setSubMenuDelegate(new ActionBarMenuItem.ActionBarSubMenuItemDelegate() {
@@ -4513,7 +4581,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         listView.applyPaddingToSections = false;
         // the rows above the list's top go under the header's blur, with their cards
         listView.setSectionsOverscanTop(AndroidUtilities.statusBarHeight + ActionBar.getCurrentActionBarHeight());
-        ThemeBind.backgroundColor(listView, Theme.key_windowBackgroundGray, resourcesProvider);
         listView.setVerticalScrollBarEnabled(false);
         final IBlur3Capture listViewCapture = new ViewGroupPartRenderer(listView, (ViewGroup) fragmentView, (canvas, child, drawingTime) -> {
             if (child == sharedMediaLayout) {
@@ -4845,6 +4912,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 presentFragment(fragment);
             } else if (position == exteraRow) {
                 presentFragment(new MainPreferencesActivity());
+            } else if (position == bygramPreferencesRow) {
+                presentFragment(new BygramPreferencesActivity());
             } else if (position == notificationRow) {
                 presentFragment(new NotificationsSettingsActivity());
             } else if (position == privacyRow) {
@@ -6351,6 +6420,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         // only the images of the header: its texts (the name, the status) and buttons are over the glass, not under it
         iBlur3Capture = (c, p) -> {
             final ViewGroup root = (ViewGroup) fragmentView;
+            drawBygramBackground(c);
             // over the media only they are under the glass: the rows above them would show through the pages' overscan
             final float mediaProgress = sharedMediaLayout != null && sharedMediaLayout.getParent() == listView ? mediaHeaderAnimationProgress : 0f;
             if (mediaProgress < 1f) {
@@ -6361,7 +6431,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 Blur3Utils.captureRelativeParent(listView::captureSectionsBackgrounds, c, p, listView, root);
                 listViewCapture.capture(c, p);
             }
-            if (mediaProgress > 0f) {
+            if (mediaProgress > 0f && !hasStretchedBygramBackground()) {
                 // going over to the media: the rows above them fade into the background of the pages
                 final float mediaTop = mediaProgress < 1f ? listView.getY() + sharedMediaLayout.getY() : Float.MAX_VALUE;
                 captureFillPaint.setColor(getThemedColor(Theme.key_windowBackgroundGray));
@@ -8581,6 +8651,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         setHeaderItemShown(callItem, profile && !photo && callItemVisible, animated);
         setHeaderItemShown(videoCallItem, profile && !photo && videoCallItemVisible, animated);
         setHeaderItemShown(editItem, profile && !photo && editItemVisible, animated);
+        setHeaderItemShown(bygramProfileViewsItem, profile, animated);
         // the media's ⋮ takes the place of the profile's ⋮ (both the last in the pill): the same button, nothing to animate
         final boolean optionsSwap = sharedMediaLayout != null && sharedMediaLayout.hasSimpleOptions() && !sharedMediaLayout.isReordering();
         setHeaderItemShown(otherItem, profile, animated && !optionsSwap);
@@ -9808,6 +9879,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         } else if (id == NotificationCenter.updateInterfaces) {
             int mask = (Integer) args[0];
             boolean infoChanged = (mask & MessagesController.UPDATE_MASK_AVATAR) != 0 || (mask & MessagesController.UPDATE_MASK_NAME) != 0 || (mask & MessagesController.UPDATE_MASK_STATUS) != 0 || (mask & MessagesController.UPDATE_MASK_EMOJI_STATUS) != 0;
+            if ((mask & MessagesController.UPDATE_MASK_CHAT_NAME) != 0 && listView != null && channelRow >= 0) {
+                RecyclerView.ViewHolder holder = listView.findViewHolderForAdapterPosition(channelRow);
+                if (holder != null && holder.itemView instanceof ProfileChannelCell channel) {
+                    channel.dialogCell.update(0, false);
+                }
+            }
             if (userId != 0) {
                 if (infoChanged) {
                     updateProfileData(true);
@@ -10332,6 +10409,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     public void onResume() {
         super.onResume();
         if (!isInPreviewMode()) {
+            if (userId > 0) loadBygramBackground();
             TLRPC.User viewedUser = userId > 0 ? getMessagesController().getUser(userId) : null;
             BygramActivityController.setCurrentActivity(currentAccount, BygramActivitySettings.ACTIVITY_PROFILE, getDialogId(), viewedUser, currentChat);
             recordBygramProfileView(viewedUser);
@@ -10405,6 +10483,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     @Override
     public void onPause() {
         super.onPause();
+        pauseBygramBackground();
         bygramProfileVisible = false;
         AndroidUtilities.cancelRunOnUIThread(refreshBygramProfileActivity);
         if (bygramProfileFlame != null) bygramProfileFlame.pause();
@@ -11428,6 +11507,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         settingsSectionRow = -1;
         settingsSectionRow2 = -1;
         exteraRow = -1;
+        bygramPreferencesRow = -1;
         notificationRow = -1;
         languageRow = -1;
         premiumRow = -1;
@@ -11605,6 +11685,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
                 settingsSectionRow2 = rowCount++;
                 exteraRow = rowCount++;
+                bygramPreferencesRow = rowCount++;
                 chatRow = rowCount++;
                 privacyRow = rowCount++;
                 notificationRow = rowCount++;
@@ -14909,6 +14990,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             textCell.setImageLeft(23);
                     } else if (position == exteraRow) {
                         textCell.setTextAndIcon(LocaleController.getString(R.string.Preferences), R.drawable.extera_outline, true);
+                    } else if (position == bygramPreferencesRow) {
+                        textCell.setTextAndIcon(LocaleController.getString(R.string.BygramPreferences), R.drawable.msg_customize, true);
                     } else if (position == notificationRow) {
                         textCell.setTextAndIcon(LocaleController.getString(R.string.NotificationsAndSounds), R.drawable.msg2_notifications, true);
                     } else if (position == privacyRow) {
@@ -15366,6 +15449,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         position == versionRow || position == dataRow || position == chatRow ||
                         position == questionRow || position == devicesRow || position == filtersRow || position == stickersRow ||
                         position == policyRow || position == sendLogsRow || position == sendLastLogsRow || position == exteraRow ||
+                        position == bygramPreferencesRow ||
                         position == clearLogsRow || position == updateRemoteConfigRow || position == switchBackendRow || position == setAvatarRow ||
                         position == addToGroupButtonRow || position == premiumRow || position == premiumGiftingRow ||
                         position == businessRow || position == liteModeRow || position == birthdayRow || position == channelRow ||
@@ -15408,7 +15492,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             } else if (position == settingsTimerRow || position == settingsKeyRow || position == reportRow || position == reportReactionRow || position == deleteReactionRow ||
                     position == subscribersRow || position == subscribersRequestsRow || position == administratorsRow || position == settingsRow || position == blockedUsersRow ||
                     position == addMemberRow || position == joinRow || position == unblockRow ||
-                    position == sendMessageRow || position == notificationRow || position == exteraRow || position == privacyRow ||
+                    position == sendMessageRow || position == notificationRow || position == exteraRow || position == bygramPreferencesRow || position == privacyRow ||
                     position == languageRow || position == dataRow || position == chatRow ||
                     position == questionRow || position == devicesRow || position == filtersRow || position == stickersRow ||
                     position == policyRow || position == sendLogsRow || position == sendLastLogsRow ||
@@ -16783,6 +16867,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             put(++pointer, settingsSectionRow, sparseIntArray);
             put(++pointer, settingsSectionRow2, sparseIntArray);
             put(++pointer, exteraRow, sparseIntArray);
+            put(++pointer, bygramPreferencesRow, sparseIntArray);
             put(++pointer, notificationRow, sparseIntArray);
             put(++pointer, languageRow, sparseIntArray);
             put(++pointer, premiumRow, sparseIntArray);
@@ -17025,8 +17110,26 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private class ClippedListView extends RecyclerListView implements StoriesListPlaceProvider.ClippedView {
+        private final Paint surface = new Paint();
+
         public ClippedListView(Context context, Theme.ResourcesProvider resourcesProvider) {
             super(context, resourcesProvider);
+            setWillNotDraw(false);
+        }
+
+        @Override
+        public void onDraw(Canvas canvas) {
+            if (bygramBackground == null) {
+                surface.setColor(getThemedColor(Theme.key_windowBackgroundGray));
+                canvas.drawRect(0, 0, getWidth(), getHeight(), surface);
+            }
+            super.onDraw(canvas);
+        }
+
+        @Override
+        public void drawBackgroundRect(Canvas canvas, RectF rect, float topRadius, float bottomRadius, float alpha) {
+            float opacity = hasStretchedBygramBackground() ? 0.83f : 1f;
+            super.drawBackgroundRect(canvas, rect, topRadius, bottomRadius, alpha * opacity);
         }
 
         @Override

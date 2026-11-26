@@ -2503,13 +2503,14 @@ public class MessagesController extends BaseController implements NotificationCe
         if (whenDone != null) {
             onLoadedRemoteFilters = whenDone;
         }
-        if (loadingRemoteFilters || !getUserConfig().isClientActivated() || !force && getUserConfig().filtersLoaded) {
+        if (loadingRemoteFilters || !getUserConfig().isClientActivated() || !force && getUserConfig().filtersLoaded && dialogFilters.size() > 1) {
             return;
         }
         if (force) {
             getUserConfig().filtersLoaded = false;
             getUserConfig().saveConfig(false);
         }
+        loadingRemoteFilters = true;
         TLRPC.TL_messages_getDialogFilters req = new TLRPC.TL_messages_getDialogFilters();
         getConnectionsManager().sendRequest(req, (response, error) -> {
             if (response instanceof Vector) {
@@ -9531,7 +9532,8 @@ public class MessagesController extends BaseController implements NotificationCe
             }
             ArrayList<Integer> locallyDeletedMessages = messages;
             ArrayList<Integer> bygramDeletedMessages = null;
-            if (!scheduled && !quickReplies && !welcomeMessages && BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)) {
+            if (!scheduled && !quickReplies && !welcomeMessages && BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)
+                    && BygramSpyMode.isHistoryAllowed(currentAccount, dialogId)) {
                 locallyDeletedMessages = new ArrayList<>();
                 bygramDeletedMessages = new ArrayList<>();
                 java.util.Set<Integer> alreadySaved = getMessagesStorage().getBygramDeletedMessageIdsSync(dialogId, messages);
@@ -9552,7 +9554,7 @@ public class MessagesController extends BaseController implements NotificationCe
                         locallyDeletedMessages.add(messageId);
                     } else {
                         bygramDeletedMessages.add(messageId);
-                        getMessagesStorage().markMessageAsBygramDeleted(dialogId, messageId);
+                        getMessagesStorage().markMessageAsBygramDeleted(dialogId, messageId, false);
                     }
                 }
                 if (toSend != null) toSend.removeAll(alreadySaved);
@@ -10234,19 +10236,29 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public void deleteDialog(final long did, int onlyHistory, boolean revoke) {
+        deleteDialog(did, onlyHistory, revoke, true);
+    }
+
+    private void deleteDialog(final long did, int onlyHistory, boolean revoke, boolean recordChatDeletion) {
         if (onlyHistory != 2 && onlyHistory != 3 && BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)
-                && getMessagesStorage().getBygramDialogRetentionStateSync(did, onlyHistory == 0 || BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_OWN_DELETED)) == 1) {
-            getMessagesStorage().getDialogMaxMessageId(did, maxId -> {
-                getMessagesStorage().markDialogMessagesAsBygramDeleted(did, onlyHistory != 0);
-                TLRPC.Dialog dialog = dialogs_dict.get(did);
-                if (dialog != null && !allDialogs.contains(dialog)) {
-                    allDialogs.add(dialog);
-                    sortDialogs(null);
-                }
-                getNotificationCenter().postNotificationName(NotificationCenter.dialogsNeedReload);
-                deleteDialog(did, 0, onlyHistory, Math.max(0, maxId), revoke, null, 0);
-            });
-            return;
+                && BygramSpyMode.isHistoryAllowed(currentAccount, did)) {
+            int retentionState = getMessagesStorage().getBygramDialogRetentionStateSync(did, onlyHistory == 0 || BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_OWN_DELETED));
+            if (!recordChatDeletion && retentionState == 2) {
+                return;
+            }
+            if (retentionState == 1) {
+                getMessagesStorage().getDialogMaxMessageId(did, maxId -> {
+                    getMessagesStorage().markDialogMessagesAsBygramDeleted(did, onlyHistory != 0, recordChatDeletion);
+                    TLRPC.Dialog dialog = dialogs_dict.get(did);
+                    if (dialog != null && !allDialogs.contains(dialog)) {
+                        allDialogs.add(dialog);
+                        sortDialogs(null);
+                    }
+                    getNotificationCenter().postNotificationName(NotificationCenter.dialogsNeedReload);
+                    deleteDialog(did, 0, onlyHistory, Math.max(0, maxId), revoke, null, 0);
+                });
+                return;
+            }
         }
         deleteDialog(did, 1, onlyHistory, 0, revoke, null, 0);
     }
@@ -14940,7 +14952,7 @@ public class MessagesController extends BaseController implements NotificationCe
             req.msg_id = (int) task.replyId;
             req.peer = getInputPeer(task.dialogId);
             req.read_max_id = task.maxId;
-            getConnectionsManager().sendRequest(req, (response, error) -> {
+            sendBygramReadTask(task, req, (response, error) -> {
 
             });
         } else if (!DialogObject.isEncryptedDialog(task.dialogId)) {
@@ -14964,7 +14976,7 @@ public class MessagesController extends BaseController implements NotificationCe
                 request.max_id = task.maxId;
                 req = request;
             }
-            getConnectionsManager().sendRequest(req, (response, error) -> {
+            sendBygramReadTask(task, req, (response, error) -> {
                 if (error == null) {
                     if (response instanceof TLRPC.TL_messages_affectedMessages) {
                         TLRPC.TL_messages_affectedMessages res = (TLRPC.TL_messages_affectedMessages) response;
@@ -14980,10 +14992,18 @@ public class MessagesController extends BaseController implements NotificationCe
                 req.peer.chat_id = chat.id;
                 req.peer.access_hash = chat.access_hash;
                 req.max_date = task.maxDate;
-                getConnectionsManager().sendRequest(req, (response, error) -> {
+                sendBygramReadTask(task, req, (response, error) -> {
 
                 });
             }
+        }
+    }
+
+    private void sendBygramReadTask(ReadTask task, TLObject request, RequestDelegate callback) {
+        if (task.bygramAllowed) {
+            getConnectionsManager().sendExplicitReadReceipt(request, callback);
+        } else {
+            getConnectionsManager().sendRequest(request, callback);
         }
     }
 
@@ -15055,8 +15075,11 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public void markDialogAsRead(long dialogId, int maxPositiveId, int maxNegativeId, int maxDate, boolean popup, long threadId, int countDiff, boolean readNow, int scheduledCount) {
-        final boolean blockReadReceipt = BygramGhostMode.shouldBlockReadReceipts();
-        final boolean bygramAllowed = BygramGhostMode.isReadReceiptAllowed();
+        markDialogAsRead(dialogId, maxPositiveId, maxNegativeId, maxDate, popup, threadId, countDiff, readNow, scheduledCount, false);
+    }
+
+    private void markDialogAsRead(long dialogId, int maxPositiveId, int maxNegativeId, int maxDate, boolean popup, long threadId, int countDiff, boolean readNow, int scheduledCount, boolean bygramAllowed) {
+        final boolean blockReadReceipt = !bygramAllowed && BygramGhostMode.shouldBlockReadReceipts();
         boolean createReadTask;
 
         if (threadId != 0) {
@@ -15212,12 +15235,48 @@ public class MessagesController extends BaseController implements NotificationCe
         }
     }
 
-    public void markDialogAsReadByAction(long dialogId, int maxId) {
-        if (!BygramGhostMode.shouldReadOnActions() || maxId == 0) {
+    public void markDialogAsReadByAction(long dialogId, int maxId, long topicId) {
+        if (!BygramGhostMode.shouldReadOnActions() || dialogId == 0 || maxId <= 0) {
             return;
         }
-        int maxDate = DialogObject.isEncryptedDialog(dialogId) ? getConnectionsManager().getCurrentTime() : 0;
-        BygramGhostMode.withReadReceipt(() -> markDialogAsRead(dialogId, maxId, maxId, maxDate, false, 0, 0, true, 0));
+        markDialogAsRead(dialogId, maxId, maxId, 0, false, topicId, 0, true, 0, true);
+    }
+
+    public void markDialogAsReadExplicitly(long dialogId, int maxId, int maxDate) {
+        markDialogAsRead(dialogId, maxId, maxId, maxDate, false, 0, 0, true, 0, true);
+    }
+
+    public void markEncryptedDialogAsReadAfterSend(int chatId, long userId) {
+        AndroidUtilities.runOnUIThread(() -> {
+            if (!BygramGhostMode.shouldReadOnActions() || getUserConfig().getClientUserId() != userId) return;
+            long dialogId = DialogObject.makeEncryptedDialogId(chatId);
+            TLRPC.Dialog dialog = getDialog(dialogId);
+            if (dialog != null && dialog.top_message != 0 && dialog.last_message_date > 0) {
+                markDialogAsReadExplicitly(dialogId, dialog.top_message, dialog.last_message_date);
+            }
+        });
+    }
+
+    public void markDialogAsReadAfterSend(BygramGhostMode.SentMessage sent, long userId) {
+        if (!BygramGhostMode.shouldReadOnActions() || sent.scheduledAt() != 0 || sent.peer() == null) return;
+        long dialogId = DialogObject.getPeerDialogId(sent.peer());
+        if (dialogId == 0 || dialogId == userId) return;
+        TLRPC.InputReplyTo reply = sent.replyTo();
+        long topic = sent.topicId();
+        if (reply instanceof TLRPC.TL_inputReplyToMessage) {
+            if (reply.monoforum_peer_id != null) {
+                topic = DialogObject.getPeerDialogId(reply.monoforum_peer_id);
+            } else if (reply.top_msg_id != 0) {
+                topic = reply.top_msg_id;
+            }
+        }
+        final long topicId = topic == 0 && isForum(dialogId) ? 1 : topic;
+        if (topicId == 0 && isMonoForum(dialogId)) return;
+        getMessagesStorage().getDialogMaxMessageId(dialogId, topicId, maxId -> {
+            if (getUserConfig().getClientUserId() == userId) {
+                markDialogAsReadByAction(dialogId, maxId, topicId);
+            }
+        });
     }
 
     public void fetchCommunityPendingJoinRequests(long communityId, String nextOffset,
@@ -16283,7 +16342,7 @@ public class MessagesController extends BaseController implements NotificationCe
             request = req;
         }
         if (self) {
-            deleteDialog(-chatId, 0, revoke);
+            deleteDialog(-chatId, 0, revoke, !(request instanceof TLRPC.TL_channels_leaveChannel));
         }
         getConnectionsManager().sendRequest(request, (response, error) -> {
             if (error != null) {
@@ -16367,7 +16426,7 @@ public class MessagesController extends BaseController implements NotificationCe
             request = req;
         }
         if (UserObject.isUserSelf(user)) {
-            deleteDialog(-chatId, 0, revoke);
+            deleteDialog(-chatId, 0, revoke, !(request instanceof TLRPC.TL_channels_leaveChannel));
         }
         getConnectionsManager().sendRequest(request, (response, error) -> {
             if (error != null) {
@@ -18116,7 +18175,7 @@ public class MessagesController extends BaseController implements NotificationCe
         ArrayList<Integer> keptIds = new ArrayList<>();
         ArrayList<Integer> removedIds = new ArrayList<>();
         for (int id : ids) {
-            if (shouldKeepBygramDeletedMessage(id, dialogId, channelId == 0)) keptIds.add(id);
+            if (shouldKeepBygramDeletedMessage(id, dialogId, true)) keptIds.add(id);
             else removedIds.add(id);
         }
         if (!keptIds.isEmpty()) {
@@ -18398,20 +18457,23 @@ public class MessagesController extends BaseController implements NotificationCe
             if (resolvedDialogId == 0) resolvedDialogId = getMessagesStorage().getNonChannelDialogIdForMessageSync(messageId);
         }
         if (resolvedDialogId == 0) return false;
+        keepDeleted &= BygramSpyMode.isHistoryAllowed(currentAccount, resolvedDialogId);
         ArrayList<Integer> ids = new ArrayList<>();
         ids.add(messageId);
         if (getMessagesStorage().getBygramDeletedMessageIdsSync(resolvedDialogId, ids).contains(messageId)) return true;
         TLRPC.Message message = getMessagesStorage().getMessageForBygramSpy(resolvedDialogId, messageId);
         if (message == null) return false;
-        if (notify && messageId > 0 && message instanceof TLRPC.TL_message && !message.out
-                && DialogObject.isUserDialog(resolvedDialogId) && resolvedDialogId != getUserConfig().getClientUserId()
-                && (message.ttl_period == 0 || (long) message.date + message.ttl_period > getConnectionsManager().getCurrentTime())) {
-            final long peerId = resolvedDialogId;
-            AndroidUtilities.runOnUIThread(() -> getNotificationsController().notifyBygramDeletedMessage(peerId));
-        }
+        boolean notifyDeletion = notify && messageId > 0 && message instanceof TLRPC.TL_message && !message.out
+                && resolvedDialogId != getUserConfig().getClientUserId()
+                && (DialogObject.isUserDialog(resolvedDialogId) || DialogObject.isChatDialog(resolvedDialogId))
+                && (message.ttl_period == 0 || (long) message.date + message.ttl_period > getConnectionsManager().getCurrentTime());
         if (!keepDeleted || !BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_OWN_DELETED)
-                && (message.out || resolvedDialogId == getUserConfig().getClientUserId())) return false;
-        getMessagesStorage().markMessageAsBygramDeleted(resolvedDialogId, messageId);
+                && (message.out || resolvedDialogId == getUserConfig().getClientUserId())) {
+            final long peerId = resolvedDialogId;
+            if (notifyDeletion) AndroidUtilities.runOnUIThread(() -> getNotificationsController().notifyBygramDeletion(peerId, 0, 0, false));
+            return false;
+        }
+        getMessagesStorage().markMessageAsBygramDeleted(resolvedDialogId, messageId, notifyDeletion);
         return true;
     }
 
@@ -19988,7 +20050,7 @@ public class MessagesController extends BaseController implements NotificationCe
                 }
                 long dialogId = -update.channel_id;
                 for (int messageId : update.messages) {
-                    if (shouldKeepBygramDeletedMessage(messageId, dialogId, false)) {
+                    if (shouldKeepBygramDeletedMessage(messageId, dialogId, true)) {
                         if (bygramDeletedMessages == null) bygramDeletedMessages = new LongSparseArray<>();
                         ArrayList<Integer> arrayList = bygramDeletedMessages.get(dialogId);
                         if (arrayList == null) {
@@ -20127,11 +20189,12 @@ public class MessagesController extends BaseController implements NotificationCe
 
                 MessageObject.getDialogId(message);
 
-                if (BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_EDITS)) {
+                if (BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_EDITS) && BygramSpyMode.isHistoryAllowed(currentAccount, message.dialog_id)) {
                     TLRPC.Message previousMessage = getMessagesStorage().getMessage(message.dialog_id, message.id);
                     if (previousMessage != null && (!TextUtils.equals(previousMessage.message, message.message)
                             || !BygramSpyMode.sameEntities(previousMessage.entities, message.entities)
-                            || !BygramSpyMode.sameMedia(previousMessage.media, message.media))) {
+                            || !BygramSpyMode.sameMedia(previousMessage.media, message.media)
+                            || !BygramSpyMode.sameRichMessage(previousMessage.rich_message, message.rich_message))) {
                         int editDate = message.edit_date != 0 ? message.edit_date : getConnectionsManager().getCurrentTime();
                         BygramSpyMode.saveEditHistory(currentAccount, message.dialog_id, message.id, editDate, previousMessage);
                     }
@@ -20937,7 +21000,8 @@ public class MessagesController extends BaseController implements NotificationCe
                             if (dialog == null && chat instanceof TLRPC.TL_channel && !chat.left) {
                                 Utilities.stageQueue.postRunnable(() -> getChannelDifference(update.channel_id, 1, 0, null));
                             } else if (ChatObject.isNotInChat(chat) && dialog != null && (promoDialog == null || promoDialog.id != dialog.id)) {
-                                deleteDialog(dialog.id, 0);
+                                boolean leftChannel = chat instanceof TLRPC.TL_channel && chat.left && !chat.kicked;
+                                deleteDialog(dialog.id, 0, false, !leftChannel);
                             }
                             if (chat instanceof TLRPC.TL_channelForbidden || chat.kicked) {
                                 ChatObject.Call call = getGroupCall(chat.id, false);

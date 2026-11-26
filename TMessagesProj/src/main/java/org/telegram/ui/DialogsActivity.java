@@ -932,7 +932,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 rightSlidingProgress = rightSlidingDialogContainer.openedProgress;
             }
             scrollY *= (1f - progressToActionMode) * (1f - rightSlidingProgress);
-            return (int) (-getY() + scrollY * (1f - searchAnimationProgress));
+            return (int) (-getY() + scrollY * (1f - searchAnimationProgress)) + bygramHeaderOffset();
         }
 
         private Rect blurBounds = new Rect();
@@ -1130,7 +1130,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             } else {
                 if (fragmentSearchField != null) {
                     fragmentSearchField.setTranslationY(lerp(
-                        scrollYOffset + tabsYOffset + storiesOverscroll - dp(4),
+                        scrollYOffset + tabsYOffset + storiesOverscroll - dp(4) + bygramHeaderOffset(),
                         -(searchFieldHeight + dp(hasStories ? DialogStoriesCell.HEIGHT_IN_DP : 0)),
                         searchAnimationProgress
                     ));
@@ -1719,7 +1719,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     containersAlpha = (1f - pHalf);
                 }
             }
-            actionBar.setTranslationY(0);
+            actionBar.setTranslationY(bygramHeaderOffset());
         } else {
             if (hasOnlySlefStories) {
                 dialogStoriesCell.setTranslationY(-dp(DialogStoriesCell.HEIGHT_IN_DP) + Math.max(scrollYOffset, -getMaxScrollYOffsetWithoutSearch()) - dp(8));
@@ -1728,7 +1728,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             containersAlpha = 1f - progressToDialogStoriesCell;
 
-            actionBar.setTranslationY(0);
+            actionBar.setTranslationY(bygramHeaderOffset());
         }
         containersAlpha *= (1f - factorSearch);
         float rightSlidingDialogProgress = 1f;
@@ -4763,6 +4763,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                             if (!hasHiddenArchive() || holder != null && holder.getAdapterPosition() >= 0) {
                                 final Boolean hide = hideOnScrollTracker.onScrolled(dy, !recyclerView.canScrollVertically(1));
                                 if (hide != null) {
+                                    if (!onlySelect && folderId == 0 && communityId == 0 && !searching && viewPage == viewPages[0]) {
+                                        updateBygramScrollChrome(hide);
+                                    }
                                     hideFloatingButton(hide);
                                 }
                             }
@@ -6846,7 +6849,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         float fadeViewT = totalOffset;
 
         if (filterTabsView != null) {
-            filterTabsView.setTranslationY(totalOffset - searchOffset);
+            filterTabsView.setTranslationY(totalOffset - searchOffset + bygramHeaderOffset());
             filtersTabVisibility = filterTabsView.getAlpha();
             filtersTabHeight = dp(36 + 7) * filtersTabVisibility;
             totalOffset += filtersTabHeight;
@@ -7377,6 +7380,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (!onlySelect && folderId == 0 && communityId == 0) {
             BygramActivityController.setCurrentActivity(currentAccount, BygramActivitySettings.ACTIVITY_DIALOGS, 0, null, null);
         }
+        android.content.SharedPreferences prefs = MessagesController.getGlobalMainSettings();
+        bygramCollapseFolders = prefs.getBoolean("bygram_scroll_folders", false);
+        bygramCollapseHeader = prefs.getBoolean("bygram_scroll_header", false);
+        bygramCollapseNavigation = prefs.getBoolean("bygram_scroll_navigation", BottomNavigationBar.floating());
+        updateBygramScrollChrome(false);
+        updateFilterTabs(false, false);
         mainTabsHiddenByScroll = false;
         hideOnScrollTracker.reset();
         checkUi_mainTabsVisible();
@@ -8146,7 +8155,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (searchIsShowed) {
             return;
         }
-        animatorFilterTabsVisible.setValue(canShowFilterTabsView, animated);
+        animatorFilterTabsVisible.setValue(canShowFilterTabsView && !bygramFoldersHidden, animated);
     }
 
     private void updateSearchActionBarItemsColors() {
@@ -9957,7 +9966,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         getMessagesController().markMentionsAsRead(did, 0);
-        getMessagesController().markDialogAsRead(did, dialog.top_message, dialog.top_message, dialog.last_message_date, false, 0, 0, true, 0);
+        getMessagesController().markDialogAsReadExplicitly(did, dialog.top_message, dialog.last_message_date);
 
         if (selectedDialogIndex >= 0) {
             frozenDialogsList.remove(selectedDialogIndex);
@@ -9983,7 +9992,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 getMessagesController().markAllTopicsAsRead(did);
             }
             getMessagesController().markMentionsAsRead(did, 0);
-            getMessagesController().markDialogAsRead(did, dialog.top_message, dialog.top_message, dialog.last_message_date, false, 0, 0, true, 0);
+            getMessagesController().markDialogAsReadExplicitly(did, dialog.top_message, dialog.last_message_date);
         }
         if (selectedDialogIndex >= 0) {
             frozenDialogsList.remove(selectedDialogIndex);
@@ -11570,6 +11579,26 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     boolean floatingButtonHidden;
     boolean mainTabsHiddenByScroll;
+    private boolean bygramHeaderHidden;
+    private boolean bygramFoldersHidden;
+    private boolean bygramCollapseNavigation = true;
+    private boolean bygramCollapseHeader;
+    private boolean bygramCollapseFolders;
+
+    private int bygramHeaderOffset() {
+        return bygramHeaderHidden && !searching && !isInPreviewMode() && !hasRightFragment()
+                && actionBar != null && !actionBar.isActionModeShowed() ? -ActionBar.getCurrentActionBarHeight() : 0;
+    }
+
+    private void updateBygramScrollChrome(boolean hide) {
+        boolean hideHeader = hide && bygramCollapseHeader;
+        boolean hideFolders = hide && bygramCollapseFolders;
+        if (bygramHeaderHidden == hideHeader && bygramFoldersHidden == hideFolders) return;
+        bygramHeaderHidden = hideHeader;
+        bygramFoldersHidden = hideFolders;
+        updateFilterTabsVisibility(true);
+        if (fragmentView != null) fragmentView.invalidate();
+    }
 
     private void hideFloatingButton(boolean hide) {
         hideFloatingButton(hide, true);
@@ -11585,7 +11614,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         floatingButtonHidden = hide;
         if (updateMainTabsHiddenByScroll) {
-            mainTabsHiddenByScroll = BottomNavigationBar.floating() && hide;
+            mainTabsHiddenByScroll = bygramCollapseNavigation && hide;
         }
         updateFloatingButtonVisibility(true);
         checkUi_mainTabsVisible();
@@ -14220,7 +14249,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         final boolean mainTabsVisible = BottomNavigationBar.visible() && !searching && !mainTabsHiddenByScroll && !isParentPreviewActive() && (blurredView == null || blurredView.getBackground() == null || blurredView.getVisibility() == View.GONE);
         final boolean mainTabsVisibilityChanged = animatorBottomTabsOffset.getValue() != mainTabsVisible;
         animatorBottomTabsOffset.setValue(mainTabsVisible, true);
-        if (mainTabsVisibilityChanged && BottomNavigationBar.floating()) {
+        if (mainTabsVisibilityChanged) {
             checkUi_chatListViewPaddingsBottom();
         }
         if (mainTabsActivityController != null) {

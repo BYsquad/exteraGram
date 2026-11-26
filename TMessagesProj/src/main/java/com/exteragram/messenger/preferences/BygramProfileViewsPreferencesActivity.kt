@@ -1,21 +1,97 @@
 package com.exteragram.messenger.preferences
 
+import android.content.Context
 import android.os.Bundle
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.View
+import android.widget.LinearLayout
+import android.widget.TextView
 import org.json.JSONObject
+import org.telegram.messenger.AndroidUtilities.dp
 import org.telegram.messenger.BygramAccountService
+import org.telegram.messenger.ImageLocation
 import org.telegram.messenger.LocaleController
 import org.telegram.messenger.LocaleController.getString
 import org.telegram.messenger.R
 import org.telegram.ui.ActionBar.AlertDialog
+import org.telegram.ui.ActionBar.Theme
+import org.telegram.ui.ActionBar.ThemeBind
+import org.telegram.ui.Components.AvatarDrawable
+import org.telegram.ui.Components.BackupImageView
+import org.telegram.ui.Components.LayoutHelper
+import org.telegram.ui.Components.RecyclerListView
 import org.telegram.ui.Components.UItem
 import org.telegram.ui.Components.UniversalAdapter
+import org.telegram.ui.Components.UniversalRecyclerView
+import org.telegram.messenger.MessagesController
 import org.telegram.ui.ProfileActivity
 
 class BygramProfileViewsPreferencesActivity : BasePreferencesActivity() {
-    private data class Visit(val id: Long, val name: String, val username: String, val date: Int)
+    private data class Visit(val id: Long, val name: String, val username: String, val date: Int, val avatarUrl: String)
+
+    private class VisitCell(context: Context, private val account: Int, resources: Theme.ResourcesProvider?) : LinearLayout(context) {
+        private val avatar = AvatarDrawable()
+        private val photo = BackupImageView(context).apply {
+            setRoundRadius(dp(20f))
+            imageReceiver.setCurrentAccount(account)
+        }
+        private val name = TextView(context).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16f)
+            ThemeBind.textColor(this, Theme.key_windowBackgroundWhiteBlackText, resources)
+        }
+        private val date = TextView(context).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13f)
+            ThemeBind.textColor(this, Theme.key_windowBackgroundWhiteGrayText2, resources)
+        }
+
+        init {
+            gravity = Gravity.CENTER_VERTICAL
+            layoutDirection = if (LocaleController.isRTL) LAYOUT_DIRECTION_RTL else LAYOUT_DIRECTION_LTR
+            setPaddingRelative(dp(21f), dp(8f), dp(21f), dp(8f))
+            addView(photo, LayoutHelper.createLinear(40, 40))
+            addView(LinearLayout(context).apply {
+                orientation = VERTICAL
+                setPaddingRelative(dp(12f), 0, 0, 0)
+                addView(name, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT))
+                addView(date, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT))
+            }, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f))
+        }
+
+        fun bind(visit: Visit) {
+            name.text = visit.name.ifEmpty { visit.id.toString() }
+            date.visibility = if (visit.date > 0) VISIBLE else GONE
+            date.text = if (visit.date > 0) LocaleController.formatDateTime(visit.date.toLong(), false) else null
+            val user = MessagesController.getInstance(account).getUser(visit.id)
+            avatar.setInfo(visit.id, visit.name, "")
+            if (user?.photo?.photo_small != null) {
+                avatar.setInfo(user)
+                photo.setForUserOrChat(user, avatar)
+            } else if (visit.avatarUrl.startsWith("https://byxarek.site/TEST-PROJECT/BYgram/api/avatar.php?")) {
+                photo.setImage(ImageLocation.getForPath(visit.avatarUrl), "40_40", avatar, null)
+            } else {
+                photo.setImageDrawable(avatar)
+            }
+        }
+    }
+
+    private class VisitFactory : UItem.UItemFactory<VisitCell>() {
+        override fun createView(context: Context, listView: RecyclerListView, account: Int, classGuid: Int, resourcesProvider: Theme.ResourcesProvider?) =
+            VisitCell(context, account, resourcesProvider)
+
+        override fun bindView(view: View, item: UItem, divider: Boolean, adapter: UniversalAdapter, listView: UniversalRecyclerView) {
+            (view as VisitCell).bind(item.`object` as Visit)
+        }
+    }
+
+    companion object {
+        init { UItem.UItemFactory.setup(VisitFactory()) }
+    }
+
     private var visits: List<Visit> = emptyList()
     private var updating = false
+
+    override fun wrapSettingsText() = true
 
     override fun getTitle(): String = getString(R.string.BygramProfileViews)
 
@@ -31,7 +107,8 @@ class BygramProfileViewsPreferencesActivity : BasePreferencesActivity() {
             val data = response.optJSONArray("views")
             visits = (0 until (data?.length() ?: 0)).mapNotNull { index ->
                 data?.optJSONObject(index)?.let {
-                    Visit(it.optLong("viewer_id"), it.optString("viewer_name"), it.optString("viewer_username"), it.optInt("visited_at"))
+                    Visit(it.optLong("viewer_id"), it.optString("viewer_name"), it.optString("viewer_username"),
+                        it.optInt("visited_at"), it.optString("avatar_url"))
                 }
             }
             refreshPreferenceItems()
@@ -39,6 +116,7 @@ class BygramProfileViewsPreferencesActivity : BasePreferencesActivity() {
     }
 
     override fun fillItems(items: ArrayList<UItem>, adapter: UniversalAdapter) {
+        items.add(UItem.asHeader(getString(R.string.PrivacySettings)))
         val enabled = BygramAccountService.profileViewsEnabled(currentAccount)
         items.add(UItem.asCheck(1, getTitle()).setChecked(enabled))
         items.add(UItem.asShadow(getString(R.string.BygramProfileViewsInfo)))
@@ -46,8 +124,7 @@ class BygramProfileViewsPreferencesActivity : BasePreferencesActivity() {
         items.add(UItem.asHeader(getString(R.string.BygramProfileViewsRecent)))
         if (visits.isEmpty()) items.add(UItem.asShadow(getString(R.string.BygramProfileViewsEmpty)))
         for ((index, visit) in visits.withIndex()) {
-            val date = if (visit.date > 0) LocaleController.formatDateTime(visit.date.toLong(), false) else null
-            items.add(UItem.asButton(index + 2, visit.name.ifEmpty { visit.id.toString() }, date))
+            items.add(UItem.ofFactory(VisitFactory::class.java).setId(index + 2).apply { `object` = visit })
         }
     }
 

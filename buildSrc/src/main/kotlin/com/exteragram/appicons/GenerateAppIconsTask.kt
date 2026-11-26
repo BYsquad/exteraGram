@@ -130,8 +130,15 @@ abstract class GenerateAppIconsTask : DefaultTask() {
         if (generatedColors.isNotEmpty()) {
             writeColors(generatedColors, File(res, "values/appicons.xml"))
         }
-        writeManifest(icons.filterNot { it.assetsOnly }, manifestFile.get().asFile)
-        writeRegistry(icons.filterNot { it.assetsOnly }, registryFile.get().asFile)
+        val launcherIcons = icons.filterNot { it.assetsOnly }.flatMap { icon ->
+            if (icon.id == DEFAULT_ID || icon.id == "winter") {
+                listOf(icon, icon.copy(id = "extera_${icon.id}", component = "Extera${icon.component}"))
+            } else {
+                listOf(icon)
+            }
+        }
+        writeManifest(launcherIcons, manifestFile.get().asFile)
+        writeRegistry(launcherIcons, registryFile.get().asFile)
     }
 
     private fun resolveAsset(icon: Icon, layer: Layer, assets: Map<String, File>, kind: String): File = when (layer) {
@@ -212,8 +219,10 @@ abstract class GenerateAppIconsTask : DefaultTask() {
             builder.append("            android:enabled=\"${icon.id == DEFAULT_ID}\"\n")
             builder.append("            android:exported=\"true\"\n")
             if (icon.id != DEFAULT_ID) {
-                builder.append("            android:icon=\"@mipmap/${icon.resource}\"\n")
-                builder.append("            android:roundIcon=\"@mipmap/${icon.resource}${if (icon.round) "_round" else ""}\"\n")
+                val launcher = if (icon.id == "winter") "bygram_launcher_winter" else icon.resource
+                val roundLauncher = if (icon.round) "${launcher}_round" else launcher
+                builder.append("            android:icon=\"@mipmap/$launcher\"\n")
+                builder.append("            android:roundIcon=\"@mipmap/$roundLauncher\"\n")
             }
             builder.append("            android:targetActivity=\"org.telegram.ui.LaunchActivity\">\n\n")
             builder.append("            <intent-filter>\n")

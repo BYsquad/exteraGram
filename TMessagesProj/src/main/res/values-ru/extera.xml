@@ -12,7 +12,6 @@
 -->
 
 <resources>
-    <string name="exteraAppName" translatable="false">exteraGram</string>
     <string name="Preferences">Настройки exteraGram</string>
 
     <!-- Главное меню -->
@@ -1414,6 +1413,10 @@
     <string name="MaximumReactionsGroupValue_many">%d реакций на сообщение</string>
     <string name="MaximumReactionsGroupValue_other">%d реакций на сообщение</string>
     <string name="MaximumReactionsGroupInfo">Ограничьте количество разных реакций, которые можно поставить на сообщение, включая уже отправленные.</string>
+    <string name="BygramPreferences">Настройки BYgram</string>
+    <string name="BygramOther">Другое</string>
+    <string name="BygramUsageStatistics">Сбор статистики</string>
+    <string name="BygramUsageStatisticsInfo">BYgram собирает общую статистику, чтобы считать пользователей клиента. Если отключить сбор, после синхронизации это устройство исключается из подсчёта, а ваши аккаунты и их огоньки исключаются из статистики. В чатах огоньки продолжат работать.</string>
     <string name="BygramBasedOnExtera">На основе exteraGram</string>
     <string name="BygramSourceCode">Исходный код</string>
     <string name="BygramUpdateAvailable">Доступно обновление BYgram</string>
@@ -1422,14 +1425,14 @@
     <string name="BygramUpdateFailed">Не удалось проверить обновления BYgram</string>
     <string name="BygramLocalChatFolderInfo">Эта папка хранится на этом устройстве.</string>
     <string name="BygramGhostMode">Режим призрака</string>
-    <string name="BygramGhostMaster">Режим призрака %1$d/5</string>
+    <string name="BygramGhostMaster">Режим призрака %1$d/%2$d</string>
     <string name="BygramNoReadMessages">Не отмечать сообщения прочитанными</string>
     <string name="BygramNoReadStories">Не отмечать истории просмотренными</string>
     <string name="BygramNoOnline">Не показывать меня в сети</string>
     <string name="BygramNoTyping">Не отправлять статус набора текста</string>
     <string name="BygramGhostInfo">Режим призрака действует только в этом клиенте. Другие активные сеансы Telegram по-прежнему могут отправлять статус «в сети» и отметки о прочтении.</string>
     <string name="BygramReadOnActions">Отмечать прочитанным при действиях</string>
-    <string name="BygramReadOnActionsInfo">Отмечает сообщения прочитанными, когда вы отправляете сообщение, ставите реакцию или нажимаете кнопку бота.</string>
+    <string name="BygramReadOnActionsInfo">Отмечает сообщения прочитанными после успешной отправки, реакции, голосования или нажатия кнопки бота.</string>
     <string name="BygramHiddenChats">Скрытые чаты</string>
     <string name="BygramProtectedChats">Запароленные чаты</string>
     <string name="BygramHiddenPin">Код скрытых чатов</string>
@@ -1500,4 +1503,31 @@
     <string name="BygramProfileViewsNotification">%1$s просмотрел(а) ваш профиль</string>
     <string name="BygramUserBadgeNotice">Пользователь является участником команды BYgram</string>
     <string name="BygramResourceBadgeNotice">Официальный ресурс BYgram</string>
+    <string name="BygramCustomization">Кастомизация</string>
+    <string name="BygramCustomizationGeneral">Основное</string>
+    <string name="BygramCollapseFolders">Сворачивать папки при прокрутке</string>
+    <string name="BygramCollapseNavigation">Сворачивать нижнюю навигацию при прокрутке</string>
+    <string name="BygramCollapseHeader">Сворачивать заголовок списка чатов при прокрутке</string>
+    <string name="BygramSnowNavigation">Снег в нижней навигации</string>
+    <string name="BygramSnowPages">Снег на страницах приложения</string>
+    <string name="BygramSnowDensity">Количество снега</string>
+    <string name="BygramProfileBackgroundChoose">Загрузить изображение или GIF до 10 МБ</string>
+    <string name="BygramProfileBackgroundPrivate">Показывать мой фон только мне</string>
+    <string name="BygramProfileBackgroundOthers">Показывать фоны других пользователей</string>
+    <string name="BygramProfileBackgroundStretch">Растянуть фон на весь профиль</string>
+    <string name="BygramProfileBackgroundLogin">Подтвердите аккаунт BYgram, чтобы опубликовать или изменить публичный фон.</string>
+    <string name="BygramProfileBackgroundError">Не удалось сохранить фон. Проверьте подключение и выберите JPEG, PNG, WebP или GIF до 10 МБ.</string>
+    <string name="BygramSpyChatDeleted">Чат с %1$s удалён</string>
+    <string name="BygramSpyChatDeletedAt">Чат удалён %1$s</string>
+    <string name="BygramFlameLostInChat">Серия огонька потеряна</string>
+    <string name="BygramFlameRestoredByYou">Вы восстановили огонёк. Осталось восстановлений: %1$d</string>
+    <string name="BygramFlameRestoredByPeer">%1$s восстановил(а) огонёк. Осталось восстановлений: %2$d</string>
+    <string name="BygramSettingsVersion">Версия настроек %1$d</string>
+    <string name="BygramWinterSettings">Зима</string>
+    <string name="BygramProfileBackgroundSection">Фон профиля</string>
+    <string name="BygramObservedReadDate">Замечено · %1$s</string>
+    <string name="BygramGhostAutoOffline">Офлайн после действий</string>
+    <string name="BygramGhostAutoOfflineInfo">Отправляет статус офлайн после действий, которые могут показать вас в сети.</string>
+    <string name="BygramSpyExcludedChats">Исключить чаты из истории</string>
+    <string name="BygramSpyExcludedChatsInfo">Прекращает сохранять новые удаления и правки в выбранных чатах.</string>
 </resources>

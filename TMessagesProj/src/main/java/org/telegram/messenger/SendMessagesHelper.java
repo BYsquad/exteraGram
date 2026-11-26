@@ -3889,13 +3889,24 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                 req.data = data;
             }
             List<String> finalKeys = keys;
+            boolean readOnAction = BygramGhostMode.shouldReadOnActions();
+            long userId = getUserConfig().getClientUserId();
             getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                 waitingForCallback.remove(key);
                 finalKeys.remove(key);
+                if (readOnAction && response != null && error == null && getUserConfig().getClientUserId() == userId) {
+                    getMessagesStorage().getStorageQueue().postRunnable(() -> {
+                        TLRPC.Message message = getMessagesStorage().getMessage(dialogId, msgId);
+                        long topicId = message != null ? MessageObject.getTopicId(currentAccount, message) : 0;
+                        AndroidUtilities.runOnUIThread(() -> {
+                            if (getUserConfig().getClientUserId() == userId) {
+                                getMessagesController().markDialogAsReadByAction(dialogId, msgId, topicId);
+                            }
+                        });
+                    });
+                }
             }), ConnectionsManager.RequestFlagFailOnServerErrors);
-            if (BygramGhostMode.shouldReadOnActions()) {
-                getMessagesController().markDialogAsReadByAction(dialogId, msgId);
-            } else {
+            if (!readOnAction) {
                 getMessagesController().markDialogAsRead(dialogId, msgId, msgId, 0, false, 0, 0, true, 0);
             }
         });
@@ -3954,6 +3965,10 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                 if (processUpdates)
                     getMessagesController().processUpdates((TLRPC.Updates) response, false);
                 voteSendTime.put(messageObject.getPollId(), SystemClock.elapsedRealtime());
+                if (response != null) {
+                    AndroidUtilities.runOnUIThread(() -> getMessagesController().markDialogAsReadByAction(
+                            messageObject.getDialogId(), messageObject.getId(), messageObject.getTopicId()));
+                }
             }
             AndroidUtilities.runOnUIThread(() -> {
                 waitingForVote.remove(key);
@@ -4051,10 +4066,13 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             req.flags |= 2;
             req.big = true;
         }
-        getMessagesController().markDialogAsReadByAction(messageObject.getDialogId(), messageObject.getId());
         getConnectionsManager().sendRequest(req, (response, error) -> {
             if (response != null) {
                 getMessagesController().processUpdates((TLRPC.Updates) response, false);
+                if (error == null) {
+                    AndroidUtilities.runOnUIThread(() -> getMessagesController().markDialogAsReadByAction(
+                            messageObject.getDialogId(), messageObject.getId(), messageObject.getTopicId()));
+                }
                 if (callback != null) {
                     AndroidUtilities.runOnUIThread(callback);
                 }
@@ -4378,7 +4396,19 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                         req.flags |= 1;
                         req.data = button.getData();
                     }
-                    getConnectionsManager().sendRequest(req, requestDelegate, ConnectionsManager.RequestFlagFailOnServerErrors);
+                    final boolean readOnAction = BygramGhostMode.shouldReadOnActions();
+                    final long userId = getUserConfig().getClientUserId();
+                    getConnectionsManager().sendRequest(req, (response, error) -> {
+                        requestDelegate.run(response, error);
+                        if (readOnAction && response instanceof TLRPC.TL_messages_botCallbackAnswer && error == null) {
+                            AndroidUtilities.runOnUIThread(() -> {
+                                if (getUserConfig().getClientUserId() == userId) {
+                                    getMessagesController().markDialogAsReadByAction(
+                                            messageObject.getDialogId(), messageObject.getId(), messageObject.getTopicId());
+                                }
+                            });
+                        }
+                    }, ConnectionsManager.RequestFlagFailOnServerErrors);
                 }
             }
         }
@@ -4527,12 +4557,6 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         }
         if (peer == 0) {
             return;
-        }
-        if (scheduleDate == 0 && retryMessageObject == null && BygramGhostMode.shouldReadOnActions()) {
-            TLRPC.Dialog dialog = getMessagesController().dialogs_dict.get(peer);
-            if (dialog != null) {
-                getMessagesController().markDialogAsReadByAction(peer, dialog.top_message);
-            }
         }
         if (richMessage != null && DialogObject.isEncryptedDialog(peer)) {
             return;

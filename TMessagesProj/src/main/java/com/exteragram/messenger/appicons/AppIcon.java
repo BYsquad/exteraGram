@@ -18,9 +18,6 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.os.Build;
 
-import com.exteragram.messenger.utils.AppUtils;
-
-import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 
@@ -28,7 +25,6 @@ public final class AppIcon {
 
     public static final String DEFAULT_ID = "default";
 
-    private static final String AVAILABILITY_WINTER = "winter";
     private static final String AVAILABILITY_MONET = "monet";
 
     private static final String AUTHOR_SELF = "exteraGram";
@@ -92,9 +88,6 @@ public final class AppIcon {
     }
 
     public boolean isAvailable() {
-        if (AVAILABILITY_WINTER.equals(availability)) {
-            return AppUtils.isWinter();
-        }
         if (isMonet()) {
             return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2;
         }
@@ -102,22 +95,25 @@ public final class AppIcon {
     }
 
     public int getBackground() {
-        return isDefault() && BuildVars.isBetaApp() ? R.mipmap.ic_launcher_beta_background : background;
+        return isDefault() ? android.R.color.black : background;
     }
 
     public boolean isBackgroundColor() {
-        return backgroundIsColor && !(isDefault() && BuildVars.isBetaApp());
+        return backgroundIsColor;
     }
 
     public int getForeground() {
-        return isDefault() && BuildVars.isBetaApp() ? R.mipmap.ic_launcher_beta_foreground : foreground;
+        return isDefault() || "winter".equals(id) ? R.drawable.bygram_launcher_foreground : foreground;
     }
 
     public CharSequence getTitle() {
+        if (isDefault()) return "BYgram";
+        if ("winter".equals(id)) return "BYgram · " + LocaleController.getString(titleRes);
         return titleRes != 0 ? LocaleController.getString(titleRes) : title;
     }
 
     public CharSequence getDescription() {
+        if (isDefault() || "winter".equals(id)) return null;
         if (descriptionRes != 0) {
             return LocaleController.getString(descriptionRes);
         }
@@ -125,6 +121,7 @@ public final class AppIcon {
     }
 
     public String getAuthor() {
+        if (isDefault() || "winter".equals(id)) return null;
         if (authorName != null) {
             return authorName;
         }

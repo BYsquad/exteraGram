@@ -253,7 +253,7 @@ public class SecretChatHelper extends BaseController {
             });
         }
         if (newChat instanceof TLRPC.TL_encryptedChatDiscarded && newChat.history_deleted
-                && !BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)) {
+                && (!BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED) || !BygramSpyMode.isHistoryAllowed(currentAccount, dialog_id))) {
             AndroidUtilities.runOnUIThread(() -> getMessagesController().deleteDialog(dialog_id, 0));
         }
     }
@@ -1145,7 +1145,7 @@ public class SecretChatHelper extends BaseController {
                     return newMessage;
                 } else if (serviceMessage.action instanceof TLRPC.TL_decryptedMessageActionFlushHistory) {
                     long did = DialogObject.makeEncryptedDialogId(chat.id);
-                    if (BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)) {
+                    if (BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED) && BygramSpyMode.isHistoryAllowed(currentAccount, did)) {
                         getMessagesStorage().markDialogMessagesAsBygramDeleted(did);
                         return null;
                     }

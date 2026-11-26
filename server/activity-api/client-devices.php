@@ -1,13 +1,23 @@
 <?php
 declare(strict_types=1);
 
+function clientDeviceId(mixed $id): string {
+    if (!is_string($id) || !preg_match('/^[a-f0-9]{64}$/D', $id)) {
+        throw new InvalidArgumentException('Invalid device ID');
+    }
+    return $id;
+}
+
+function removeClientDevice(PDO $pdo, array $request): void {
+    $pdo->prepare('DELETE FROM client_devices WHERE device_id=?')->execute([clientDeviceId($request['device_id'] ?? null)]);
+}
+
 function reportClientDevice(PDO $pdo, array $request): void {
-    $id = $request['device_id'] ?? '';
+    $id = clientDeviceId($request['device_id'] ?? null);
     $model = $request['model'] ?? '';
     $version = $request['version'] ?? '';
     $android = $request['android_api'] ?? 0;
-    if (!is_string($id) || !preg_match('/^[a-f0-9]{64}$/D', $id)
-        || !is_string($model) || trim($model) === ''
+    if (!is_string($model) || trim($model) === ''
         || !is_string($version) || !preg_match('/^[0-9A-Za-z._-]{1,24}$/D', $version)
         || !is_int($android) || $android < 24 || $android > 255) {
         throw new InvalidArgumentException('Invalid device report');

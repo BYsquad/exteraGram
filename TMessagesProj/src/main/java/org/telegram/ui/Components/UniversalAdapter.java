@@ -80,6 +80,8 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
     public static final int VIEW_TYPE_BLACK_HEADER = 1;
     public static final int VIEW_TYPE_TOPVIEW = 2;
 
+    public boolean wrapSettingsText;
+
     public static final int VIEW_TYPE_TEXT = 3;
     public static final int VIEW_TYPE_CHECK = 4;
     public static final int VIEW_TYPE_TEXT_CHECK = 5;
@@ -737,6 +739,8 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
             case VIEW_TYPE_TEXT:
                 TextCell cell = (TextCell) holder.itemView;
                 cell.reset();
+                cell.setWrapText(wrapSettingsText);
+                CharSequence rowValue = wrapSettingsText ? null : item.textValue;
                 if (item.object instanceof TLRPC.Document) {
                     cell.setTextAndSticker(item.text, (TLRPC.Document) item.object, divider);
                 } else if (item.object instanceof String) {
@@ -760,7 +764,7 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                     } else {
                         cell.setTextAndValueDrawable(item.text, rightDrawable, divider);
                     }
-                } else if (TextUtils.isEmpty(item.textValue)) {
+                } else if (TextUtils.isEmpty(rowValue)) {
                     if (item.object instanceof Drawable) {
                         cell.setTextAndIcon(item.text, (Drawable) item.object, divider);
                     } else if (item.iconResId == 0) {
@@ -770,11 +774,11 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                     }
                 } else {
                     if (item.object instanceof Drawable) {
-                        cell.setTextAndValueAndIcon(item.text, item.textValue, (Drawable) item.object, divider);
+                        cell.setTextAndValueAndIcon(item.text, rowValue, (Drawable) item.object, divider);
                     } else if (item.iconResId == 0) {
-                        cell.setTextAndValue(item.text, item.textValue, divider);
+                        cell.setTextAndValue(item.text, rowValue, divider);
                     } else {
-                        cell.setTextAndValueAndIcon(item.text, item.textValue, item.iconResId, divider);
+                        cell.setTextAndValueAndIcon(item.text, rowValue, item.iconResId, divider);
                     }
                 }
                 if (item.accent) {
@@ -793,8 +797,9 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                 if (item.intValue > 0 && (item.settingItem == null || item.settingItem instanceof TextSetting)) {
                     cell.heightDp = item.intValue;
                 }
-                if (!TextUtils.isEmpty(item.subtext)) {
-                    cell.setSubtitle(item.subtext);
+                CharSequence rowSubtitle = wrapSettingsText && TextUtils.isEmpty(item.subtext) ? item.textValue : item.subtext;
+                if (!TextUtils.isEmpty(rowSubtitle)) {
+                    cell.setSubtitle(rowSubtitle);
                     if (cell.getImageView() != null)
                         cell.getImageView().setTranslationY(dp(2));
                 }
@@ -821,6 +826,7 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                 if (item.checkBoxIconResId != 0) {
                     checkCell.setCheckBoxIcon(item.checkBoxIconResId);
                 }
+                checkCell.setWrapText(wrapSettingsText);
                 checkCell.itemId = item.id;
                 if (viewType == VIEW_TYPE_CHECKRIPPLE) {
                     ThemeBind.backgroundColor(holder.itemView, item.checked ? Theme.key_windowBackgroundChecked : Theme.key_windowBackgroundUnchecked);

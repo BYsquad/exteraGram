@@ -108,8 +108,23 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 public class NotificationsController extends BaseController implements NotificationCenter.NotificationCenterDelegate {
-    public void notifyBygramDeletedMessage(long dialogId) {
-        if (!BygramSpyMode.getBoolean(BygramSpyMode.SPY_NOTIFY_DELETED) || BygramChatPrivacy.hidesNotification(currentAccount, dialogId)) return;
+    public void notifyBygramDeletion(long dialogId, int messageId, long topicId, boolean wholeChat) {
+        if (!BygramSpyMode.getBoolean(BygramSpyMode.SPY_NOTIFY_DELETED)) return;
+        TLRPC.Dialog dialog = getMessagesController().getDialog(dialogId);
+        if (dialog == null) {
+            getMessagesStorage().getDialogFolderId(dialogId, folderId -> {
+                if (folderId != 1) showBygramDeletion(dialogId, messageId, topicId, wholeChat);
+            });
+        } else if (dialog.folder_id != 1) {
+            showBygramDeletion(dialogId, messageId, topicId, wholeChat);
+        }
+    }
+
+    private void showBygramDeletion(long dialogId, int messageId, long topicId, boolean wholeChat) {
+        TLRPC.Dialog dialog = getMessagesController().getDialog(dialogId);
+        if (!BygramSpyMode.getBoolean(BygramSpyMode.SPY_NOTIFY_DELETED)
+                || dialog != null && dialog.folder_id == 1
+                || BygramChatPrivacy.hidesNotification(currentAccount, dialogId)) return;
         android.content.Context context = ApplicationLoader.applicationContext;
         android.app.NotificationManager manager = (android.app.NotificationManager) context.getSystemService(android.content.Context.NOTIFICATION_SERVICE);
         if (manager == null) return;
@@ -117,18 +132,25 @@ public class NotificationsController extends BaseController implements Notificat
         if (android.os.Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(new android.app.NotificationChannel(channel,
                 LocaleController.getString(R.string.BygramSpyMode), android.app.NotificationManager.IMPORTANCE_DEFAULT));
         android.content.Intent intent = new android.content.Intent(context, org.telegram.ui.LaunchActivity.class);
-        intent.setAction("com.tmessages.openchat.bygram.spy." + currentAccount + "." + dialogId);
+        intent.setAction("com.tmessages.openchat.bygram.spy." + currentAccount + "." + dialogId + "." + wholeChat + "." + messageId);
         intent.putExtra("currentAccount", currentAccount);
-        intent.putExtra("userId", dialogId);
+        if (messageId > 0) intent.putExtra("message_id", messageId);
+        if (DialogObject.isUserDialog(dialogId)) intent.putExtra("userId", dialogId);
+        else if (DialogObject.isChatDialog(dialogId)) {
+            intent.putExtra("chatId", -dialogId);
+            if (topicId > 0 && ChatObject.isForum(getMessagesController().getChat(-dialogId))) {
+                intent.putExtra("topicId", topicId);
+            }
+        } else return;
         intent.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP);
         android.app.PendingIntent pending = android.app.PendingIntent.getActivity(context, 0, intent,
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
-        String name = UserObject.getUserName(getMessagesController().getUser(dialogId));
+        String name = DialogObject.getName(currentAccount, dialogId);
         android.app.Notification notification = new androidx.core.app.NotificationCompat.Builder(context, channel)
                 .setSmallIcon(R.drawable.notification).setContentTitle(LocaleController.getString(R.string.BygramSpyMode))
-                .setContentText(LocaleController.formatString(R.string.BygramMessageDeletedInChat, name))
+                .setContentText(LocaleController.formatString(wholeChat ? R.string.BygramSpyChatDeleted : R.string.BygramMessageDeletedInChat, name))
                 .setContentIntent(pending).setAutoCancel(true).setOnlyAlertOnce(true).build();
-        try { manager.notify("bygram_spy_" + currentAccount + "_" + dialogId, 0, notification); }
+        try { manager.notify("bygram_spy_" + currentAccount + "_" + dialogId, wholeChat ? -1 : messageId, notification); }
         catch (SecurityException error) { FileLog.e(error); }
     }
 

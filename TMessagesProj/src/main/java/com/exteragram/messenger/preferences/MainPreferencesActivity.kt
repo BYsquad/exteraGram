@@ -36,8 +36,6 @@ import org.telegram.messenger.browser.Browser
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.ActionBar
 import org.telegram.ui.Components.ItemOptions
-import org.telegram.ui.BygramActivityPreferencesActivity
-import org.telegram.ui.BygramPrivateChatsActivity
 import org.telegram.ui.Components.UItem
 import org.telegram.ui.Components.UniversalAdapter
 import org.telegram.ui.LaunchActivity
@@ -57,14 +55,7 @@ class MainPreferencesActivity : BasePreferencesActivity(), NotificationCenter.No
         FORUM,
         CROWDIN,
         COMMUNITY,
-        SOURCE_CODE,
-        UPSTREAM,
-        BYGRAM_GHOST,
-        BYGRAM_HIDDEN,
-        BYGRAM_PROTECTED,
-        BYGRAM_SPY,
-        BYGRAM_ACTIVITY,
-        BYGRAM_PROFILE_VIEWS;
+        SOURCE_CODE;
 
         val id: Int = ordinal + 1
     }
@@ -101,12 +92,6 @@ class MainPreferencesActivity : BasePreferencesActivity(), NotificationCenter.No
         items.add(uButton(PreferenceItem.APPEARANCE_CATEGORY, getString(R.string.Appearance), R.drawable.msg_theme, linkAlias = "appearance"))
         items.add(uButton(PreferenceItem.CHATS_CATEGORY, getString(R.string.SearchAllChatsShort), R.drawable.msg_discussion, linkAlias = "chats"))
         items.addIf(PluginsController.isPluginEngineSupported(), uButton(PreferenceItem.PLUGINS_CATEGORY, getString(R.string.Plugins), R.drawable.msg_plugins, linkAlias = "plugins"))
-        items.add(uButton(PreferenceItem.BYGRAM_GHOST, getString(R.string.BygramGhostMode), R.drawable.msg_permissions, linkAlias = "bygramGhost"))
-        items.add(uButton(PreferenceItem.BYGRAM_HIDDEN, getString(R.string.BygramHiddenChats), R.drawable.msg_permissions, linkAlias = "bygramHidden"))
-        items.add(uButton(PreferenceItem.BYGRAM_PROTECTED, getString(R.string.BygramProtectedChats), R.drawable.msg_permissions, linkAlias = "bygramProtected"))
-        items.add(uButton(PreferenceItem.BYGRAM_SPY, getString(R.string.BygramSpyMode), R.drawable.msg_info, linkAlias = "bygramSpy"))
-        items.add(uButton(PreferenceItem.BYGRAM_ACTIVITY, getString(R.string.BygramShareActivity), R.drawable.msg_location, linkAlias = "bygramActivity"))
-        items.add(uButton(PreferenceItem.BYGRAM_PROFILE_VIEWS, getString(R.string.BygramProfileViews), R.drawable.msg_info, linkAlias = "bygramProfileViews"))
         items.add(uButton(PreferenceItem.OTHER_CATEGORY, getString(R.string.LocalOther), R.drawable.msg_fave, linkAlias = "other"))
         items.add(UItem.asShadow())
 
@@ -123,8 +108,7 @@ class MainPreferencesActivity : BasePreferencesActivity(), NotificationCenter.No
                 .setLinkAlias("chat", this)
         )
         items.add(uButton(PreferenceItem.CROWDIN, getString(R.string.Crowdin), R.drawable.msg_translate, "Crowdin", linkAlias = "crowdin"))
-        items.add(uButton(PreferenceItem.SOURCE_CODE, getString(R.string.BygramSourceCode), R.drawable.msg_delete, "GitHub", linkAlias = "sourceCode"))
-        items.add(uButton(PreferenceItem.UPSTREAM, getString(R.string.BygramBasedOnExtera), R.drawable.msg_info, "GitHub", showDivider = false))
+        items.add(uButton(PreferenceItem.SOURCE_CODE, getString(R.string.BygramBasedOnExtera), R.drawable.msg_delete, "GitHub", showDivider = false, linkAlias = "sourceCode"))
         items.add(UItem.asShadow())
     }
 
@@ -137,12 +121,6 @@ class MainPreferencesActivity : BasePreferencesActivity(), NotificationCenter.No
             PreferenceItem.APPEARANCE_CATEGORY -> presentFragment(AppearancePreferencesActivity())
             PreferenceItem.CHATS_CATEGORY -> presentFragment(ChatsPreferencesActivity())
             PreferenceItem.PLUGINS_CATEGORY -> presentFragment(PluginsActivity())
-            PreferenceItem.BYGRAM_GHOST -> presentFragment(BygramGhostPreferencesActivity())
-            PreferenceItem.BYGRAM_HIDDEN -> BygramPrivateChatsActivity.openHidden(this)
-            PreferenceItem.BYGRAM_PROTECTED -> presentFragment(BygramPrivateChatsActivity(false))
-            PreferenceItem.BYGRAM_SPY -> presentFragment(BygramSpyPreferencesActivity())
-            PreferenceItem.BYGRAM_ACTIVITY -> presentFragment(BygramActivityPreferencesActivity())
-            PreferenceItem.BYGRAM_PROFILE_VIEWS -> presentFragment(BygramProfileViewsPreferencesActivity())
             PreferenceItem.OTHER_CATEGORY -> presentFragment(OtherPreferencesActivity())
             PreferenceItem.CHANNEL -> messagesController.openByUserName(CHANNEL_USERNAME, this, 1)
             PreferenceItem.FORUM -> messagesController.openByUserName(FORUM_USERNAME, this, 1)
@@ -155,8 +133,7 @@ class MainPreferencesActivity : BasePreferencesActivity(), NotificationCenter.No
                 }
             }
             PreferenceItem.CROWDIN -> Browser.openUrl(parentActivity, "https://crowdin.com/project/exteralocales")
-            PreferenceItem.SOURCE_CODE -> Browser.openUrl(parentActivity, "https://github.com/BYsquad/exteraGram/tree/bygram/exteragram-base")
-            PreferenceItem.UPSTREAM -> Browser.openUrl(parentActivity, "https://github.com/exteraSquad/exteraGram")
+            PreferenceItem.SOURCE_CODE -> Browser.openUrl(parentActivity, "https://github.com/exteraSquad/exteraGram")
         }
     }
 

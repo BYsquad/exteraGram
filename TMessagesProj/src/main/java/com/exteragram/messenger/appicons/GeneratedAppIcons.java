@@ -25,7 +25,9 @@ public final class GeneratedAppIcons {
     public static AppIcon[] create() {
         return new AppIcon[]{
             AppIcon.of("default", "com.bygram.mobile.DefaultIcon", "always", R.string.AppIconDefault, null, R.string.AppIconDefaultInfo, null, 0, "exteraGram", null, R.color.ic_background, true, R.mipmap.ic_launcher_foreground, R.drawable.ic_monochrome),
+            AppIcon.of("extera_default", "com.bygram.mobile.ExteraDefaultIcon", "always", R.string.AppIconDefault, null, R.string.AppIconDefaultInfo, null, 0, "exteraGram", null, R.color.ic_background, true, R.mipmap.ic_launcher_foreground, R.drawable.ic_monochrome),
             AppIcon.of("winter", "com.bygram.mobile.WinterIcon", "winter", R.string.AppIconWinter, null, R.string.AppIconWinterInfo, null, 0, "exteraGram", null, R.mipmap.ic_launcher_winter_background, false, R.mipmap.ic_launcher_foreground, R.drawable.ic_monochrome),
+            AppIcon.of("extera_winter", "com.bygram.mobile.ExteraWinterIcon", "winter", R.string.AppIconWinter, null, R.string.AppIconWinterInfo, null, 0, "exteraGram", null, R.mipmap.ic_launcher_winter_background, false, R.mipmap.ic_launcher_foreground, R.drawable.ic_monochrome),
             AppIcon.of("monet", "com.bygram.mobile.MonetIcon", "monet", R.string.AppIconMonet, null, R.string.AppIconMonetInfo, null, 0, "exteraGram", null, R.color.ic_background_monet, true, R.drawable.ic_foreground_monet, 0),
             AppIcon.of("orbit", "com.bygram.mobile.OrbitIcon", "always", R.string.AppIconOrbit, null, R.string.AppIconOrbitInfo, null, 0, "exteraGram", null, R.color.ic_background, true, R.mipmap.ic_launcher_orbit_foreground, R.drawable.ic_monochrome_orbit),
             AppIcon.of("editor", "com.bygram.mobile.EditorIcon", "always", R.string.AppIconEditor, null, R.string.AppIconEditorInfo, null, 0, "exteraGram", null, R.mipmap.ic_launcher_editor_background, false, R.mipmap.ic_launcher_editor_foreground, R.drawable.ic_monochrome),

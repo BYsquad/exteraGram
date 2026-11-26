@@ -5968,7 +5968,7 @@ public class MessagesStorage extends BaseController {
     private boolean bygramSpyReconciling;
     private boolean bygramSpyRestartReconciliation;
     private final SharedPreferences.OnSharedPreferenceChangeListener bygramSpyPreferenceListener = (prefs, key) -> {
-        if (key == null || BygramSpyMode.SPY_SAVE_DELETED.equals(key)) {
+        if (key == null || BygramSpyMode.SPY_SAVE_DELETED.equals(key) || key.startsWith(BygramSpyMode.SPY_EXCLUDED_CHATS)) {
             storageQueue.postRunnable(() -> {
                 try {
                     updateBygramSpyCapture();
@@ -5989,10 +5989,12 @@ public class MessagesStorage extends BaseController {
         database.executeFast("CREATE INDEX IF NOT EXISTS bygram_spy_pending ON bygram_spy_messages(uid, mid) WHERE pending = 1").stepThis().dispose();
         database.executeFast("CREATE INDEX IF NOT EXISTS bygram_spy_nonchannel ON bygram_spy_messages(mid) WHERE is_channel = 0").stepThis().dispose();
         database.executeFast("CREATE TEMP TABLE IF NOT EXISTS bygram_spy_capture (enabled INTEGER)").stepThis().dispose();
+        database.executeFast("CREATE TEMP TABLE IF NOT EXISTS bygram_spy_excluded (uid INTEGER PRIMARY KEY)").stepThis().dispose();
         String values = "NEW." + BYGRAM_SPY_COLUMNS.replace(", ", ", NEW.");
         String capture = " ON main.messages_v2 " +
                 "WHEN NEW.mid > 0 AND NEW.uid < 4611686018427387904 AND NEW.send_state = 0 AND NEW.data IS NOT NULL " +
-                "AND EXISTS (SELECT 1 FROM bygram_spy_capture WHERE enabled = 1) BEGIN " +
+                "AND EXISTS (SELECT 1 FROM bygram_spy_capture WHERE enabled = 1) " +
+                "AND NOT EXISTS (SELECT 1 FROM bygram_spy_excluded WHERE uid = NEW.uid) BEGIN " +
                 "INSERT INTO bygram_spy_messages (" + BYGRAM_SPY_COLUMNS + ") VALUES (" + values + ") " +
                 "ON CONFLICT(uid, mid) DO UPDATE SET data = excluded.data, date = excluded.date, out = excluded.out, " +
                 "is_channel = excluded.is_channel, read_state = excluded.read_state, ttl = excluded.ttl, " +
@@ -6037,8 +6039,17 @@ public class MessagesStorage extends BaseController {
 
     private void updateBygramSpyCapture() throws SQLiteException {
         database.executeFast("DELETE FROM bygram_spy_capture").stepThis().dispose();
+        database.executeFast("DELETE FROM bygram_spy_excluded").stepThis().dispose();
+        for (String id : BygramSpyMode.excludedChats(currentAccount)) {
+            try {
+                database.executeFast("INSERT OR IGNORE INTO bygram_spy_excluded VALUES (" + Long.parseLong(id) + ")").stepThis().dispose();
+            } catch (NumberFormatException ignored) {
+                // Ignore obsolete preference entries without a dialog ID.
+            }
+        }
         if (BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_DELETED)) {
             database.executeFast("INSERT INTO bygram_spy_capture VALUES (1)").stepThis().dispose();
+            database.executeFast("DELETE FROM bygram_spy_messages WHERE saved = 0 AND uid IN (SELECT uid FROM bygram_spy_excluded)").stepThis().dispose();
         } else {
             database.executeFast("DELETE FROM bygram_spy_messages WHERE saved = 0").stepThis().dispose();
         }
@@ -6178,6 +6189,7 @@ public class MessagesStorage extends BaseController {
     }
 
     private void applyBygramSpyDifference(long did, ArrayList<Integer> ids, TLRPC.messages_Messages response) {
+        if (!BygramSpyMode.isHistoryAllowed(currentAccount, did)) return;
         ArrayList<Integer> savedIds = new ArrayList<>();
         boolean keepOwn = BygramSpyMode.getBoolean(BygramSpyMode.SPY_SAVE_OWN_DELETED);
         try {
@@ -6227,6 +6239,14 @@ public class MessagesStorage extends BaseController {
                 }
                 AndroidUtilities.runOnUIThread(() -> {
                     if (!savedMessages.isEmpty()) {
+                        for (MessageObject message : savedMessages) {
+                            if (!message.messageOwner.out && did != getUserConfig().getClientUserId()
+                                    && (message.messageOwner.ttl_period == 0 || (long) message.messageOwner.date
+                                    + message.messageOwner.ttl_period > getConnectionsManager().getCurrentTime())) {
+                                getNotificationsController().notifyBygramDeletion(did, message.getId(), message.getTopicId(), false);
+                                break;
+                            }
+                        }
                         getNotificationCenter().postNotificationName(NotificationCenter.didReceiveNewMessages, did, savedMessages, false, 0);
                     }
                 });
@@ -6288,8 +6308,15 @@ public class MessagesStorage extends BaseController {
         AndroidUtilities.runOnUIThread(() -> getMessagesController().showBygramSpyDialog(dialog, message, user, chat));
     }
 
-    public void markMessageAsBygramDeleted(long dialogId, int messageId) {
-        storageQueue.postRunnable(() -> markMessageAsBygramDeletedInternal(dialogId, messageId));
+    public void markMessageAsBygramDeleted(long dialogId, int messageId, boolean notify) {
+        storageQueue.postRunnable(() -> {
+            if (markMessageAsBygramDeletedInternal(dialogId, messageId) && notify) {
+                TLRPC.Message message = getMessageInternal(dialogId, messageId);
+                long topicId = message != null && DialogObject.isChatDialog(dialogId)
+                        ? MessageObject.getTopicId(currentAccount, message, ChatObject.isForum(getChat(-dialogId))) : 0;
+                AndroidUtilities.runOnUIThread(() -> getNotificationsController().notifyBygramDeletion(dialogId, messageId, topicId, false));
+            }
+        });
     }
 
     public void mergeBygramDeletedMessagesSync(long dialogId, ArrayList<TLRPC.Message> messages, boolean initial) {
@@ -6378,7 +6405,7 @@ public class MessagesStorage extends BaseController {
         return result;
     }
 
-    private void markMessageAsBygramDeletedInternal(long dialogId, int messageId) {
+    private boolean markMessageAsBygramDeletedInternal(long dialogId, int messageId) {
         long resolvedDialogId = dialogId;
         SQLiteCursor cursor = null;
         try {
@@ -6391,7 +6418,9 @@ public class MessagesStorage extends BaseController {
                 cursor = null;
             }
             if (resolvedDialogId != 0) {
+                if (!BygramSpyMode.isHistoryAllowed(currentAccount, resolvedDialogId)) return false;
                 TLRPC.Message message = getMessageWithCustomParamsOnlyInternal(messageId, resolvedDialogId);
+                if (message.bygramDeleted) return false;
                 message.id = messageId;
                 message.bygramDeleted = true;
                 updateMessageCustomParamsInternal(resolvedDialogId, message);
@@ -6399,6 +6428,7 @@ public class MessagesStorage extends BaseController {
                     restoreBygramSpyMessages("uid = " + resolvedDialogId + " AND mid = " + messageId);
                     if (isBygramSpyOnlyDialog(resolvedDialogId)) restoreBygramSpyDialog(resolvedDialogId);
                 }
+                return true;
             }
         } catch (Exception e) {
             checkSQLException(e);
@@ -6407,10 +6437,11 @@ public class MessagesStorage extends BaseController {
                 cursor.dispose();
             }
         }
+        return false;
     }
 
     public void markDialogMessagesAsBygramDeleted(long dialogId) {
-        markDialogMessagesAsBygramDeleted(dialogId, false);
+        markDialogMessagesAsBygramDeleted(dialogId, false, true);
     }
 
     // 0: nothing to retain, 1: live history, 2: only Spy copies remain.
@@ -6419,6 +6450,7 @@ public class MessagesStorage extends BaseController {
     }
 
     public int getBygramDialogRetentionStateSync(long dialogId, boolean keepOwn) {
+        if (!BygramSpyMode.isHistoryAllowed(currentAccount, dialogId)) return 0;
         int[] state = {1};
         CountDownLatch latch = new CountDownLatch(1);
         storageQueue.postRunnable(() -> {
@@ -6456,8 +6488,9 @@ public class MessagesStorage extends BaseController {
         return state[0];
     }
 
-    public void markDialogMessagesAsBygramDeleted(long dialogId, boolean respectOwnDeletionSetting) {
+    public void markDialogMessagesAsBygramDeleted(long dialogId, boolean respectOwnDeletionSetting, boolean recordChatDeletion) {
         storageQueue.postRunnable(() -> {
+            if (!BygramSpyMode.isHistoryAllowed(currentAccount, dialogId)) return;
             ArrayList<Integer> messageIds = new ArrayList<>();
             ArrayList<Integer> removeIds = new ArrayList<>();
             SQLiteCursor cursor = null;
@@ -6477,11 +6510,15 @@ public class MessagesStorage extends BaseController {
                 for (int messageId : messageIds) markMessageAsBygramDeletedInternal(dialogId, messageId);
                 int anchorId = messageIds.isEmpty() ? 0 : messageIds.get(0);
                 int deletedAt = getConnectionsManager().getCurrentTime();
-                if (anchorId != 0) {
+                boolean newDeletion = false;
+                if (recordChatDeletion && anchorId != 0) {
                     TLRPC.Message anchor = getMessageWithCustomParamsOnlyInternal(anchorId, dialogId);
-                    anchor.id = anchorId;
-                    anchor.bygramChatDeletedAt = deletedAt;
-                    updateMessageCustomParamsInternal(dialogId, anchor);
+                    if (anchor.bygramChatDeletedAt == 0) {
+                        anchor.id = anchorId;
+                        anchor.bygramChatDeletedAt = deletedAt;
+                        updateMessageCustomParamsInternal(dialogId, anchor);
+                        newDeletion = true;
+                    }
                 }
                 if (!removeIds.isEmpty()) {
                     long channelId = DialogObject.isChatDialog(dialogId) && ChatObject.isChannel(getMessagesController().getChat(-dialogId)) ? -dialogId : 0;
@@ -6490,8 +6527,12 @@ public class MessagesStorage extends BaseController {
                     AndroidUtilities.runOnUIThread(() -> getNotificationCenter().postNotificationName(
                             NotificationCenter.messagesDeleted, removeIds, channelId, false));
                 }
-                AndroidUtilities.runOnUIThread(() -> getNotificationCenter().postNotificationName(
-                        NotificationCenter.bygramMessagesDeleted, dialogId, messageIds, anchorId, deletedAt));
+                boolean notifyDeletion = newDeletion;
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (notifyDeletion) getNotificationsController().notifyBygramDeletion(dialogId, 0, 0, true);
+                    getNotificationCenter().postNotificationName(NotificationCenter.bygramMessagesDeleted,
+                            dialogId, messageIds, anchorId, notifyDeletion ? deletedAt : 0);
+                });
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
@@ -15394,7 +15435,7 @@ public class MessagesStorage extends BaseController {
                     for (int a = 0, N = dialogs.size(); a < N; a++) {
                         long dialogId = dialogs.keyAt(a);
                         ArrayList<Integer> mids = dialogs.valueAt(a);
-                        if (keepDeleted) {
+                        if (keepDeleted && BygramSpyMode.isHistoryAllowed(currentAccount, dialogId)) {
                             for (int mid : mids) {
                                 markMessageAsBygramDeletedInternal(dialogId, mid);
                             }
@@ -18956,11 +18997,17 @@ public class MessagesStorage extends BaseController {
     }
 
     public void getDialogMaxMessageId(long dialog_id, IntCallback callback) {
+        getDialogMaxMessageId(dialog_id, 0, callback);
+    }
+
+    public void getDialogMaxMessageId(long dialog_id, long topicId, IntCallback callback) {
         storageQueue.postRunnable(() -> {
             SQLiteCursor cursor = null;
             int[] max = new int[1];
             try {
-                cursor = database.queryFinalized("SELECT MAX(mid) FROM messages_v2 WHERE uid = " + dialog_id);
+                cursor = topicId == 0
+                        ? database.queryFinalized("SELECT MAX(mid) FROM messages_v2 WHERE uid = ?", dialog_id)
+                        : database.queryFinalized("SELECT MAX(mid) FROM messages_topics WHERE uid = ? AND topic_id = ?", dialog_id, topicId);
                 if (cursor.next()) {
                     max[0] = cursor.intValue(0);
                 }

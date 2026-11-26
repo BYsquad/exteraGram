@@ -37,6 +37,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BaseController;
 import org.telegram.messenger.BuildVars;
+import org.telegram.messenger.BygramGhostMode;
 import org.telegram.messenger.CaptchaController;
 import org.telegram.messenger.EmuDetector;
 import org.telegram.messenger.FileLoadOperation;
@@ -56,6 +57,7 @@ import org.telegram.utils.proxy.WebProxyConnectionTester;
 import org.telegram.utils.proxy.WebProxyTransport;
 import org.telegram.utils.proxy.ProxySettings;
 import org.telegram.ui.Components.VideoPlayer;
+import org.telegram.tgnet.tl.TL_account;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -483,14 +485,38 @@ public class ConnectionsManager extends BaseController {
     }
 
     public int sendRequest(final TLObject object, final RequestDelegate onComplete, final RequestDelegateTimestamp onCompleteTimestamp, final QuickAckDelegate onQuickAck, final WriteToSocketDelegate onWriteToSocket, final int flags, final int datacenterId, final int connectionType, final boolean immediate) {
+        return enqueueRequest(object, onComplete, onCompleteTimestamp, onQuickAck, onWriteToSocket, flags, datacenterId, connectionType, immediate, false);
+    }
+
+    public int sendExplicitReadReceipt(TLObject object, RequestDelegate onComplete) {
+        return enqueueRequest(object, onComplete, null, null, null, 0, DEFAULT_DATACENTER_ID, ConnectionTypeGeneric, true, true);
+    }
+
+    private int enqueueRequest(TLObject object, RequestDelegate onComplete, RequestDelegateTimestamp onCompleteTimestamp, QuickAckDelegate onQuickAck, WriteToSocketDelegate onWriteToSocket, int flags, int datacenterId, int connectionType, boolean immediate, boolean allowReadReceipt) {
         final int requestToken = lastRequestToken.getAndIncrement();
-        Utilities.stageQueue.postRunnable(() -> {
-            sendRequestInternal(object, onComplete, onCompleteTimestamp, onQuickAck, onWriteToSocket, flags, datacenterId, connectionType, immediate, requestToken);
-        });
+        Utilities.stageQueue.postRunnable(() -> sendRequestInternal(object, onComplete, onCompleteTimestamp, onQuickAck, onWriteToSocket, flags, datacenterId, connectionType, immediate, requestToken, allowReadReceipt));
         return requestToken;
     }
 
     private void sendRequestInternal(TLObject object, RequestDelegate onComplete, RequestDelegateTimestamp onCompleteTimestamp, QuickAckDelegate onQuickAck, WriteToSocketDelegate onWriteToSocket, int flags, int datacenterId, int connectionType, boolean immediate, int requestToken) {
+        sendRequestInternal(object, onComplete, onCompleteTimestamp, onQuickAck, onWriteToSocket, flags, datacenterId, connectionType, immediate, requestToken, false);
+    }
+
+    private boolean bygramOfflinePending;
+
+    private void scheduleBygramOffline(long userId) {
+        if (bygramOfflinePending || !BygramGhostMode.shouldAutoOffline()) return;
+        bygramOfflinePending = true;
+        Utilities.stageQueue.postRunnable(() -> {
+            bygramOfflinePending = false;
+            if (getUserConfig().getClientUserId() != userId || !BygramGhostMode.shouldAutoOffline()) return;
+            TL_account.updateStatus request = new TL_account.updateStatus();
+            request.offline = true;
+            sendRequest(request, null);
+        }, 1500);
+    }
+
+    private void sendRequestInternal(TLObject object, RequestDelegate onComplete, RequestDelegateTimestamp onCompleteTimestamp, QuickAckDelegate onQuickAck, WriteToSocketDelegate onWriteToSocket, int flags, int datacenterId, int connectionType, boolean immediate, int requestToken, boolean allowReadReceipt) {
         if (BuildVars.LOGS_ENABLED) {
             FileLog.d("send request " + object + " with token = " + requestToken);
         }
@@ -498,9 +524,12 @@ public class ConnectionsManager extends BaseController {
             String requestName = object.getClass().getSimpleName();
 
             TLObject modifiedRequest = hooks.executePreRequestHook(requestName, currentAccount, object);
-            if (modifiedRequest == null) {
+            if (modifiedRequest != null) {
+                modifiedRequest = FeedRequestNormalizer.normalize(currentAccount, modifiedRequest);
+            }
+            if (modifiedRequest == null || !BygramGhostMode.prepareRequest(modifiedRequest, allowReadReceipt)) {
                 if (BuildVars.LOGS_ENABLED) {
-                    FileLog.d("Request cancelled by pre-request hook: " + requestName);
+                    FileLog.d("Request cancelled by client policy: " + requestName);
                 }
                 Utilities.stageQueue.postRunnable(() -> {
                     if (onComplete != null) {
@@ -512,7 +541,11 @@ public class ConnectionsManager extends BaseController {
                 return;
             }
             object = modifiedRequest;
-            object = FeedRequestNormalizer.normalize(currentAccount, object);
+            final long bygramUserId = getUserConfig().getClientUserId();
+            final boolean bygramAutoOffline = bygramUserId != 0 && BygramGhostMode.shouldAutoOffline() && BygramGhostMode.canSurfaceOnline(object);
+            final boolean bygramReadOnAction = bygramUserId != 0 && BygramGhostMode.shouldReadOnActions();
+            final BygramGhostMode.SentMessage bygramSent = bygramReadOnAction ? BygramGhostMode.sentMessage(object) : null;
+            final int bygramEncryptedChatId = bygramReadOnAction ? BygramGhostMode.sentEncryptedChat(object) : 0;
 
             NativeByteBuffer buffer = new NativeByteBuffer(object.getObjectSize());
             object.serializeToStream(buffer);
@@ -568,7 +601,7 @@ public class ConnectionsManager extends BaseController {
                             FileLog.d("Cleanup keys for " + currentAccount + " because of CONNECTION_NOT_INITED");
                         }
                         cleanup(true);
-                        sendRequest(finalObject, onComplete, onCompleteTimestamp, onQuickAck, onWriteToSocket, flags, datacenterId, connectionType, immediate);
+                        enqueueRequest(finalObject, onComplete, onCompleteTimestamp, onQuickAck, onWriteToSocket, flags, datacenterId, connectionType, immediate, allowReadReceipt);
                         return;
                     }
                     if (resp != null) {
@@ -582,6 +615,8 @@ public class ConnectionsManager extends BaseController {
                     PluginsHooks.PostRequestResult postHookResult = hooks.executePostRequestHook(requestName, currentAccount, resp, error);
                     final TLObject finalResponse = postHookResult.getResponse();
                     final TLRPC.TL_error finalError = postHookResult.getError();
+                    final boolean serverAccepted = resp != null && error == null;
+                    final boolean encryptedMessageAccepted = resp instanceof TLRPC.messages_SentEncryptedMessage;
                     Utilities.stageQueue.postRunnable(() -> {
                         if (onComplete != null) {
                             onComplete.run(finalResponse, finalError);
@@ -590,6 +625,13 @@ public class ConnectionsManager extends BaseController {
                         } else if (finalResponse instanceof TLRPC.Updates) {
                             KeepAliveJob.finishJob();
                             AccountInstance.getInstance(currentAccount).getMessagesController().processUpdates((TLRPC.Updates) finalResponse, false);
+                        }
+                        if (serverAccepted && getUserConfig().getClientUserId() == bygramUserId) {
+                            if (bygramAutoOffline) scheduleBygramOffline(bygramUserId);
+                            if (bygramSent != null) getMessagesController().markDialogAsReadAfterSend(bygramSent, bygramUserId);
+                            if (bygramEncryptedChatId != 0 && encryptedMessageAccepted) {
+                                getMessagesController().markEncryptedDialogAsReadAfterSend(bygramEncryptedChatId, bygramUserId);
+                            }
                         }
                         if (finalResponse != null) {
                             finalResponse.freeResources();

@@ -549,7 +549,20 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         themeSwitchImageView = new ThemeRevealView(this);
         themeSwitchImageView.setVisibility(View.GONE);
 
-        drawerLayoutContainer = new DrawerLayoutContainer(this);
+        drawerLayoutContainer = new DrawerLayoutContainer(this) {
+            private final org.telegram.ui.Components.BygramSnow snow = new org.telegram.ui.Components.BygramSnow(false);
+
+            @Override
+            protected void dispatchDraw(@NonNull Canvas canvas) {
+                super.dispatchDraw(canvas);
+                BaseFragment page = getLastFragment();
+                if (page instanceof CameraScanActivity || org.telegram.ui.Stories.recorder.StoryRecorder.isVisible()
+                        || page instanceof ChatActivity chat && chat.getInstantCameraView() != null && chat.getInstantCameraView().isCameraReady()) {
+                    return;
+                }
+                snow.draw(this, canvas);
+            }
+        };
         drawerLayoutContainer.setActionBarLayout(actionBarLayout);
         drawerLayoutContainer.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
             private boolean wasPortrait;

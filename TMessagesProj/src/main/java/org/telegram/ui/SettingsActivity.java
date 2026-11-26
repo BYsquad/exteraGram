@@ -67,6 +67,7 @@ import com.exteragram.messenger.ExteraConfig;
 import com.exteragram.messenger.GlassOutlineStyle;
 import com.exteragram.messenger.config.BottomNavigationBar;
 import com.exteragram.messenger.debug.DebugActivity;
+import com.exteragram.messenger.preferences.BygramPreferencesActivity;
 import com.exteragram.messenger.preferences.MainPreferencesActivity;
 import com.exteragram.messenger.utils.AppUtils;
 import com.exteragram.messenger.utils.ui.tabs.HideOnScrollTracker;
@@ -853,6 +854,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         }
 
         items.add(SettingCell.Factory.of(-1, 0xFFE83030, 0xFFE83030, Theme.isCurrentThemeMonet() ? R.drawable.ic_foreground_solid : R.drawable.ic_foreground, getString(R.string.Preferences)));
+        items.add(SettingCell.Factory.of(-2, IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom, R.drawable.msg_customize, getString(R.string.BygramPreferences)));
 
         items.add(UItem.asShadow(null));
 
@@ -993,6 +995,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         switch (item.id) {
             case -1:
                 presentSettingFragment(new MainPreferencesActivity());
+                break;
+            case -2:
+                presentSettingFragment(new BygramPreferencesActivity());
                 break;
             case 1:
                 presentSettingFragment(new UserInfoActivity());

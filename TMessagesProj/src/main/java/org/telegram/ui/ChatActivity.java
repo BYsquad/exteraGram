@@ -7232,6 +7232,50 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
         });
+        chatListView.addItemDecoration(new RecyclerView.ItemDecoration() {
+            private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            private final RectF badge = new RectF();
+            private final java.util.Locale locale = LocaleController.getInstance().getCurrentLocale();
+            private final java.text.SimpleDateFormat clock = new java.text.SimpleDateFormat(
+                    android.text.format.DateFormat.getBestDateTimePattern(locale, "yMMMdHms"), locale);
+            private int lastTimestamp;
+            private String label;
+
+            private int timestamp(View view) {
+                MessageObject message = view instanceof ChatMessageCell cell ? cell.getMessageObject()
+                        : view instanceof ChatActionCell cell ? cell.getMessageObject() : null;
+                return chatMode == MODE_DEFAULT && message != null ? message.messageOwner.bygramChatDeletedAt : 0;
+            }
+
+            @Override
+            public void getItemOffsets(@NonNull Rect outRect, @NonNull View view, @NonNull RecyclerView parent, @NonNull RecyclerView.State state) {
+                outRect.bottom = timestamp(view) > 0 ? dp(28) : 0;
+            }
+
+            @Override
+            public void onDrawOver(@NonNull Canvas canvas, @NonNull RecyclerView parent, @NonNull RecyclerView.State state) {
+                for (int i = 0; i < parent.getChildCount(); i++) {
+                    View child = parent.getChildAt(i);
+                    int time = timestamp(child);
+                    if (time <= 0) continue;
+                    if (lastTimestamp != time) {
+                        lastTimestamp = time;
+                        label = LocaleController.formatString(R.string.BygramSpyChatDeletedAt, clock.format(new java.util.Date(time * 1000L)));
+                    }
+                    labelPaint.setTypeface(AndroidUtilities.bold());
+                    labelPaint.setTextSize(dp(12));
+                    labelPaint.setTextAlign(Paint.Align.CENTER);
+                    float width = labelPaint.measureText(label) + dp(16);
+                    float x = parent.getWidth() / 2f;
+                    float y = child.getY() + child.getHeight() + dp(3);
+                    labelPaint.setColor(getThemedColor(Theme.key_chat_serviceBackground));
+                    badge.set(x - width / 2, y, x + width / 2, y + dp(22));
+                    canvas.drawRoundRect(badge, dp(11), dp(11), labelPaint);
+                    labelPaint.setColor(getThemedColor(Theme.key_chat_serviceText));
+                    canvas.drawText(label, x, y + (dp(22) - labelPaint.ascent() - labelPaint.descent()) / 2, labelPaint);
+                }
+            }
+        });
         chatListView.setOnItemLongClickListener(onItemLongClickListener);
         chatListView.setOnItemClickListener(onItemClickListener);
         chatListView.setOnScrollListener(new RecyclerView.OnScrollListener() {
@@ -21367,7 +21411,7 @@ public class ChatActivity extends BaseFragment implements
         } else if (chatMode == MODE_PINNED) {
             avatarContainer.setTitle(LocaleController.formatPluralString("PinnedMessagesCount", getPinnedMessagesCount()));
         } else if (currentChat != null) {
-            avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(currentChat.title)), currentChat.scam, currentChat.fake, currentChat.verified, false, BadgesController.INSTANCE.getBadge(currentChat), currentChat.emoji_status, animated);
+            avatarContainer.setTitle(AndroidUtilities.removeRTL(AndroidUtilities.removeDiacritics(currentChat.title)), currentChat.scam, currentChat.fake, currentChat.verified, false, BadgesController.INSTANCE.getBadge(currentChat), currentChat.emoji_status, animated, currentChat);
         } else if (currentUser != null) {
             if (currentUser.self) {
                 avatarContainer.setTitle(LocaleController.getString(R.string.SavedMessages));
@@ -25753,6 +25797,9 @@ public class ChatActivity extends BaseFragment implements
                 return;
             }
             long did = (Long) args[0];
+            if (did == dialog_id && dialog_id > 0 && bygramFlame != null) {
+                bygramFlame.messagesChanged();
+            }
             doOnIdle(() -> {
                 int msgId = (Integer) args[1];
                 if (!isFeedSearch() && filteredMessagesDict != null) {
@@ -25979,7 +26026,7 @@ public class ChatActivity extends BaseFragment implements
             for (int loadIndex = 0; loadIndex < messagesDict.length; loadIndex++) {
                 for (int messageId : ids) {
                     MessageObject messageObject = messagesDict[loadIndex].get(messageId);
-                    if (messageObject != null && args.length > 3 && messageId == (int) args[2]) {
+                    if (messageObject != null && args.length > 3 && (int) args[3] > 0 && messageId == (int) args[2]) {
                         messageObject.messageOwner.bygramChatDeletedAt = (int) args[3];
                         messageObject.forceUpdate = true;
                         changed = true;
@@ -25993,6 +26040,7 @@ public class ChatActivity extends BaseFragment implements
             }
             if (changed) {
                 updateVisibleRows();
+                if (chatListView != null) chatListView.invalidateItemDecorations();
             }
         } else if (id == NotificationCenter.replaceMessagesObjects) {
             long did = (long) args[0];
@@ -32589,14 +32637,36 @@ public class ChatActivity extends BaseFragment implements
     private boolean supportsBygramFlame() {
         return chatMode == MODE_DEFAULT && !isReport() && !isThreadChat()
                 && !inPreviewMode && !isInPreviewMode() && !isInsideContainer && currentEncryptedChat == null
-                && BygramFlame.supportsPeer(currentUser) && dialog_id == currentUser.id;
+                && (BygramFlame.supportsPeer(currentUser) && dialog_id == currentUser.id
+                || BygramFlame.supportsGroup(currentChat) && dialog_id == -currentChat.id);
     }
 
+    private String bygramFlameRestoreNotice;
+    private boolean bygramFlameShowLost;
+
     private void updateBygramFlame(int days, int activeDay, int lostDays, int restoresLeft, boolean needsConfirmation) {
+        boolean canRestoreChanged = (bygramFlameRestoresLeft > 0) != (restoresLeft > 0)
+                || (bygramFlameLostDays > 0) != (lostDays > 0);
         bygramFlameDays = days;
         bygramFlameLostDays = lostDays;
         bygramFlameRestoresLeft = restoresLeft;
         if (!supportsBygramFlame()) return;
+        org.json.JSONObject event = bygramFlame == null ? null : bygramFlame.restoreEvent();
+        String restoreNotice = null;
+        if (event != null && lostDays == 0) {
+            long restoredBy = event.optLong("user_id");
+            int remaining = event.optInt("remaining");
+            restoreNotice = restoredBy == getUserConfig().getClientUserId()
+                    ? LocaleController.formatString(R.string.BygramFlameRestoredByYou, remaining)
+                    : LocaleController.formatString(R.string.BygramFlameRestoredByPeer,
+                            DialogObject.getName(currentAccount, restoredBy), remaining);
+        }
+        boolean showLost = lostDays > 0 || restoreNotice != null;
+        if (canRestoreChanged || showLost != bygramFlameShowLost || !TextUtils.equals(bygramFlameRestoreNotice, restoreNotice)) {
+            bygramFlameRestoreNotice = restoreNotice;
+            bygramFlameShowLost = showLost;
+            if (chatAdapter != null) chatAdapter.notifyDataSetChanged(false);
+        }
         if (avatarContainer != null) avatarContainer.setBygramFlame(days, activeDay != 0);
         if (!isPaused && fragmentView instanceof FrameLayout && bygramFlame != null
                 && (Build.VERSION.SDK_INT < 26 || ValueAnimator.areAnimatorsEnabled())
@@ -33575,10 +33645,7 @@ public class ChatActivity extends BaseFragment implements
         if (finalSelectedObject == null && (selectedMessagesIds[0].size() + selectedMessagesIds[1].size()) == 0) {
             return;
         }
-        AlertsCreator.createDeleteMessagesAlert(this, currentUser, currentChat, currentEncryptedChat, chatInfo, mergeDialogId, finalSelectedObject, selectedMessagesIds, finalSelectedGroup, (int) getTopicId(), chatMode, null, () -> {
-            hideActionMode();
-            updatePinnedMessageView(true);
-        }, hideDimAfter ? () -> dimBehindView(false) : null, themeDelegate);
+        AlertsCreator.createDeleteMessagesAlert(this, currentUser, currentChat, currentEncryptedChat, chatInfo, mergeDialogId, finalSelectedObject, selectedMessagesIds, finalSelectedGroup, (int) getTopicId(), chatMode, null, this::clearSelectionMode, hideDimAfter ? () -> dimBehindView(false) : null, themeDelegate);
     }
 
     private void hideActionMode() {
@@ -34091,7 +34158,16 @@ public class ChatActivity extends BaseFragment implements
             }
             final boolean showMessageSeen = !suggestEdit && !isEphemeral && !isReactionsViewAvailable && !isInScheduleMode() && currentChat != null && message.isOutOwner() && message.isSent() && !message.isEditing() && !message.isSending() && !message.isSendError() && !message.isContentUnread() && !message.isUnread() && (ConnectionsManager.getInstance(currentAccount).getCurrentTime() - message.messageOwner.date < getMessagesController().chatReadMarkExpirePeriod) && (ChatObject.isMegagroup(currentChat) || !ChatObject.isChannel(currentChat)) && chatInfo != null && chatInfo.participants_count <= getMessagesController().chatReadMarkSizeThreshold && !(message.messageOwner.action instanceof TLRPC.TL_messageActionChatJoinedByRequest) && chatMode != MODE_SAVED && message.canSetReaction() && !ChatObject.isMonoForum(currentChat);
             final boolean showMessageAuthor = !suggestEdit && !isEphemeral && currentChat != null && !message.isOut() && ChatObject.isMonoForum(currentChat) && ChatObject.canManageMonoForum(currentAccount, currentChat) && -currentChat.linked_monoforum_id == message.getFromChatId();
-            final boolean showPrivateMessageSeen = !suggestEdit && !isEphemeral && !isReactionsViewAvailable && currentChat == null && currentEncryptedChat == null && (currentUser != null && !UserObject.isUserSelf(currentUser) && !UserObject.isReplyUser(currentUser) && !UserObject.isAnonymous(currentUser) && !currentUser.bot && !UserObject.isService(currentUser.id)) && (userInfo == null || !userInfo.read_dates_private) && !isInScheduleMode() && message.isOutOwner() && message.isSent() && !message.isEditing() && !message.isSending() && !message.isSendError() && !message.isContentUnread() && !message.isUnread() && (ConnectionsManager.getInstance(currentAccount).getCurrentTime() - message.messageOwner.date < getMessagesController().pmReadDateExpirePeriod) && !(message.messageOwner.action instanceof TLRPC.TL_messageActionChatJoinedByRequest);
+            final boolean privateMessageSeenEligible = !suggestEdit && !isEphemeral && currentChat == null && currentEncryptedChat == null
+                    && currentUser != null && !UserObject.isUserSelf(currentUser) && !UserObject.isReplyUser(currentUser)
+                    && !UserObject.isAnonymous(currentUser) && !currentUser.bot && !UserObject.isService(currentUser.id)
+                    && !isInScheduleMode() && message.isOutOwner() && message.isSent() && !message.isEditing()
+                    && !message.isSending() && !message.isSendError() && !message.isContentUnread() && !message.isUnread()
+                    && !(message.messageOwner.action instanceof TLRPC.TL_messageActionChatJoinedByRequest);
+            final boolean showPrivateMessageSeen = privateMessageSeenEligible
+                    && ((!isReactionsViewAvailable && (userInfo == null || !userInfo.read_dates_private)
+                        && getConnectionsManager().getCurrentTime() - message.messageOwner.date < getMessagesController().pmReadDateExpirePeriod)
+                        || BygramSpyMode.getReadDate(currentAccount, message.getDialogId(), message.getId()) > 0);
             final boolean showPrivateMessageEdit = !suggestEdit && !isEphemeral && (currentUser == null || !UserObject.isReplyUser(currentUser) && !UserObject.isAnonymous(currentUser)) && !isInScheduleMode() && message.isEdited() && !(message.messageOwner.action instanceof TLRPC.TL_messageActionChatJoinedByRequest);
             final boolean showPrivateMessageFwdOriginal = !suggestEdit && !isEphemeral && (currentUser == null || !UserObject.isReplyUser(currentUser) && !UserObject.isAnonymous(currentUser)) && !isInScheduleMode() && message.needDrawForwarded() && message.messageOwner.fwd_from != null && message.messageOwner.fwd_from.date > 0 && !(message.messageOwner.action instanceof TLRPC.TL_messageActionChatJoinedByRequest);
             final boolean showSponsorInfo = !suggestEdit && !isEphemeral && selectedObject != null && selectedObject.isSponsored() && (selectedObject.sponsoredInfo != null || selectedObject.sponsoredAdditionalInfo != null || selectedObject.sponsoredUrl != null && !selectedObject.sponsoredUrl.startsWith("https://" + getMessagesController().linkPrefix));
@@ -34549,7 +34625,8 @@ public class ChatActivity extends BaseFragment implements
 
                     popupLayout.addView(messageSeenLayout, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 44));
                     addGap = true;
-                } else if (showPrivateMessageSeen) {
+                }
+                if (showPrivateMessageSeen) {
                     MessagePrivateSeenView messagePrivateSeenView = new MessagePrivateSeenView(getContext(), MessagePrivateSeenView.TYPE_SEEN, message, () -> {
                         closeMenu(true);
                     }, themeDelegate);
@@ -40766,6 +40843,9 @@ public class ChatActivity extends BaseFragment implements
         private int userNameTimeRow = -5;
 
         private int botForumStartThreadRow = -5;
+        private int bygramFlameLostRow = -5;
+        private int bygramFlameRestoredRow = -5;
+        private static final int BYGRAM_FLAME_NOTICE = 90;
 
         public int messagesStartRow;
         private int messagesEndRow;
@@ -40865,6 +40945,12 @@ public class ChatActivity extends BaseFragment implements
             userNameTimeRow = -5;
             botForumStartThreadRow = -5;
 
+            bygramFlameLostRow = -5;
+            bygramFlameRestoredRow = -5;
+            if (!isFiltered && !isFrozen && !messages.isEmpty() && forwardEndReached[0]) {
+                if (bygramFlameRestoreNotice != null) bygramFlameRestoredRow = rowCount++;
+                if (bygramFlameShowLost) bygramFlameLostRow = rowCount++;
+            }
             if (needBotForumInfoRow()) {
                 botForumStartThreadRow = rowCount++;
             }
@@ -40958,6 +41044,8 @@ public class ChatActivity extends BaseFragment implements
                 messages = ChatActivity.this.messages;
             }
 
+            if (position == bygramFlameLostRow) return Long.MIN_VALUE + 1;
+            if (position == bygramFlameRestoredRow) return Long.MIN_VALUE + 2;
             if (position >= messagesStartRow && position < messagesEndRow) {
                 return messages.get(position - messagesStartRow).stableId;
             } else if (position == botInfoRow || position == botInfoEmptyRow) {
@@ -41367,6 +41455,16 @@ public class ChatActivity extends BaseFragment implements
                         return ChatActivity.this.getSideMenuWidth();
                     }
                 };
+            } else if (viewType == BYGRAM_FLAME_NOTICE) {
+                FrameLayout notice = new FrameLayout(mContext);
+                TextView text = new TextView(mContext);
+                text.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+                text.setTypeface(AndroidUtilities.bold());
+                text.setGravity(Gravity.CENTER);
+                text.setPadding(dp(10), dp(6), dp(10), dp(6));
+                notice.addView(text, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
+                        Gravity.CENTER, 16, 3, 16, 3));
+                view = notice;
             } else if (viewType == 10) {
                 ChatMessageUnsupportedCell cell = new ChatMessageUnsupportedCell(mContext, themeDelegate);
                 cell.setDelegate(getChatMessageCellDelegate());
@@ -41378,6 +41476,18 @@ public class ChatActivity extends BaseFragment implements
 
         @Override
         public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
+            if (position == bygramFlameLostRow || position == bygramFlameRestoredRow) {
+                TextView label = (TextView) ((FrameLayout) holder.itemView).getChildAt(0);
+                boolean lost = position == bygramFlameLostRow;
+                boolean canRestore = lost && bygramFlameLostDays > 0 && bygramFlameRestoresLeft > 0;
+                label.setText(lost ? getString(R.string.BygramFlameLostInChat)
+                        + (canRestore ? "\n" + getString(R.string.BygramFlameRestoreAction) : "") : bygramFlameRestoreNotice);
+                label.setTextColor(getThemedColor(Theme.key_chat_serviceText));
+                label.setBackground(Theme.createRoundRectDrawable(dp(12), getThemedColor(Theme.key_chat_serviceBackground)));
+                label.setOnClickListener(canRestore ? v -> confirmBygramFlameRestore() : null);
+                label.setClickable(canRestore);
+                return;
+            }
             if (position == botInfoRow || position == botInfoEmptyRow) {
                 BotHelpCell helpView = (BotHelpCell) holder.itemView;
                 if (UserObject.isReplyUser(currentUser)) {
@@ -42035,6 +42145,7 @@ public class ChatActivity extends BaseFragment implements
                     return 3;
                 }
             }
+            if (position == bygramFlameLostRow || position == bygramFlameRestoredRow) return BYGRAM_FLAME_NOTICE;
             if (position == hintRow || position == hintRow2) {
                 return 1;
             }

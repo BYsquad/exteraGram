@@ -19,7 +19,10 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Canvas;
 import android.graphics.Path;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.widget.ImageView;
@@ -37,6 +40,7 @@ import com.exteragram.messenger.utils.ui.MonetUtils;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildVars;
+import org.telegram.messenger.BygramUpdates;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
@@ -52,23 +56,41 @@ public class HeaderSettingsCell extends LinearLayout implements CustomPreference
     private Path shapePath;
 
     public HeaderSettingsCell(Context context) {
+        this(context, false);
+    }
+
+    public HeaderSettingsCell(Context context, boolean bygram) {
         super(context);
 
         setOrientation(VERTICAL);
         setGravity(Gravity.CENTER);
 
-        Drawable logo = ContextCompat.getDrawable(context, R.drawable.bygram_logo_new);
+        Drawable logo = ContextCompat.getDrawable(context, bygram ? R.drawable.bygram_user_badge : R.drawable.ic_foreground).mutate();
+        Theme.ThemeInfo theme = Theme.getActiveTheme();
+        int color = ContextCompat.getColor(context, R.color.ic_background);
+        if (bygram) {
+            color = android.graphics.Color.TRANSPARENT;
+        } else if (theme.isMonet() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            color = MonetUtils.getColor(theme.isDark() ? "a2_800" : "a1_100");
+            logo = ContextCompat.getDrawable(context, R.drawable.ic_foreground_solid).mutate();
+            logo.setColorFilter(new PorterDuffColorFilter(MonetUtils.getColor(theme.isDark() ? "a1_200" : "a1_700"), PorterDuff.Mode.MULTIPLY));
+        }
 
         imageView = new RLottieImageView(context) {
             @Override
             public void draw(@NonNull Canvas canvas) {
+                if (bygram) {
+                    super.draw(canvas);
+                    return;
+                }
                 canvas.save();
                 canvas.clipPath(getPath());
                 super.draw(canvas);
                 canvas.restore();
             }
         };
-        imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        imageView.setBackgroundColor(color);
+        imageView.setScaleType(bygram ? ImageView.ScaleType.FIT_CENTER : ImageView.ScaleType.CENTER_CROP);
         imageView.setImageDrawable(logo);
         addView(imageView, LayoutHelper.createLinear(72, 72, Gravity.CENTER | Gravity.TOP, 0, 28, 0, 0));
 
@@ -76,7 +98,7 @@ public class HeaderSettingsCell extends LinearLayout implements CustomPreference
         titleTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
         titleTextView.setTypeface(AndroidUtilities.bold());
         titleTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
-        titleTextView.setText(LocaleController.getString(R.string.exteraAppName));
+        titleTextView.setText(bygram ? "BYgram" : LocaleController.getString(R.string.exteraAppName));
         titleTextView.setLines(1);
         titleTextView.setMaxLines(1);
         titleTextView.setSingleLine(true);
@@ -89,21 +111,24 @@ public class HeaderSettingsCell extends LinearLayout implements CustomPreference
         subtitleTextView.setTypeface(AndroidUtilities.bold());
         subtitleTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
         subtitleTextView.setLineSpacing(AndroidUtilities.dp(2), 1f);
-        PackageInfo info;
-        try {
-            info = ApplicationLoader.applicationContext.getPackageManager().getPackageInfo(ApplicationLoader.applicationContext.getPackageName(), 0);
-        } catch (PackageManager.NameNotFoundException e) {
-            throw new RuntimeException(e);
+        if (bygram) {
+            subtitleTextView.setText(LocaleController.formatString(R.string.BygramSettingsVersion, BygramUpdates.RELEASE_NUMBER));
+        } else {
+            PackageInfo info;
+            try {
+                info = ApplicationLoader.applicationContext.getPackageManager().getPackageInfo(ApplicationLoader.applicationContext.getPackageName(), 0);
+            } catch (PackageManager.NameNotFoundException e) {
+                throw new RuntimeException(e);
+            }
+            var sb = new StringBuilder(BuildVars.BUILD_VERSION_STRING);
+            if (info != null) {
+                sb.append(" (").append(PackageInfoCompat.getLongVersionCode(info)).append(")");
+            }
+            subtitleTextView.setText(sb);
         }
-        var sb = new StringBuilder(BuildVars.BUILD_VERSION_STRING);
-        if (info != null) {
-            sb.append(" (").append(PackageInfoCompat.getLongVersionCode(info)).append(")");
-        }
-        subtitleTextView.setText(sb);
         subtitleTextView.setGravity(Gravity.CENTER);
-        subtitleTextView.setLines(0);
-        subtitleTextView.setMaxLines(0);
         subtitleTextView.setSingleLine(false);
+        subtitleTextView.setMaxLines(2);
         subtitleTextView.setPadding(0, 0, 0, 0);
         addView(subtitleTextView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER | Gravity.TOP, 60, 2, 60, 28));
     }

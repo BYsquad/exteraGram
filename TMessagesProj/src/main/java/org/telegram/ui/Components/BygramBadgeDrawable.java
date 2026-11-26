@@ -18,6 +18,7 @@ public final class BygramBadgeDrawable extends Drawable {
     private final boolean resource;
     private final Drawable image;
     private final Drawable leading;
+    private final int sizeDp;
     private final int size;
     private final int gap;
 
@@ -27,30 +28,35 @@ public final class BygramBadgeDrawable extends Drawable {
 
     public BygramBadgeDrawable(Context context, boolean resource, int sizeDp, Drawable leading) {
         this.resource = resource;
+        this.sizeDp = sizeDp;
         this.size = AndroidUtilities.dp(sizeDp);
         this.leading = leading instanceof BygramBadgeDrawable ? ((BygramBadgeDrawable) leading).leading : leading;
         this.gap = this.leading == null ? 0 : AndroidUtilities.dp(4);
-        image = context.getResources().getDrawable(resource ? R.drawable.bygram_resource_badge : R.drawable.bygram_user_badge).mutate();
+        image = context.getResources().getDrawable(R.drawable.bygram_user_badge).mutate();
+    }
+
+    BygramBadgeDrawable copy(Context context) {
+        return new BygramBadgeDrawable(context, resource, sizeDp, leading);
     }
 
     @Override public void draw(@NonNull Canvas canvas) {
         Rect bounds = getBounds();
+        float scale = bounds.width() / (float) getIntrinsicWidth();
         if (leading != null) {
-            int width = Math.max(0, leading.getIntrinsicWidth());
-            int height = Math.max(0, leading.getIntrinsicHeight());
-            leading.setBounds(bounds.left, bounds.top + (bounds.height() - height) / 2,
-                    bounds.left + width, bounds.top + (bounds.height() + height) / 2);
+            int width = Math.round(Math.max(0, leading.getIntrinsicWidth()) * scale);
+            int height = Math.round(Math.max(0, leading.getIntrinsicHeight()) * scale);
+            int top = bounds.top + (bounds.height() - height) / 2;
+            leading.setBounds(bounds.left, top, bounds.left + width, top + height);
             leading.draw(canvas);
         }
-        image.setBounds(bounds.right - size, bounds.top + (bounds.height() - size) / 2,
-                bounds.right, bounds.top + (bounds.height() + size) / 2);
+        int scaledSize = Math.round(size * scale);
+        int top = bounds.top + (bounds.height() - scaledSize) / 2;
+        image.setBounds(bounds.right - scaledSize, top, bounds.right, top + scaledSize);
         image.draw(canvas);
     }
 
     public Rect badgeBounds() {
-        Rect bounds = getBounds();
-        return new Rect(bounds.right - size, bounds.top + (bounds.height() - size) / 2,
-                bounds.right, bounds.top + (bounds.height() + size) / 2);
+        return image.getBounds();
     }
 
     public void showNotice() {

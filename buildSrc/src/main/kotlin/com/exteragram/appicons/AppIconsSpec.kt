@@ -37,7 +37,7 @@ internal sealed class Layer {
     object None : Layer()
 }
 
-internal class Icon(
+internal data class Icon(
     val id: String,
     val dir: File,
     val owner: String,

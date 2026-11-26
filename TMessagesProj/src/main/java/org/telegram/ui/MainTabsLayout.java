@@ -382,6 +382,8 @@ public class MainTabsLayout extends AnimatedLinearLayout {
 
 
 
+    private final org.telegram.ui.Components.BygramSnow bygramSnow = new org.telegram.ui.Components.BygramSnow(true);
+
     @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
         if (drawCustomSelector) {
@@ -396,6 +398,7 @@ public class MainTabsLayout extends AnimatedLinearLayout {
         }
 
         super.dispatchDraw(canvas);
+        bygramSnow.draw(this, canvas);
 
         if (drawTopDivider) {
             dividerPaint.setColor(Theme.getDividerColor(resourcesProvider));

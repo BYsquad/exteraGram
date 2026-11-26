@@ -40,6 +40,7 @@ import androidx.annotation.NonNull;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.Emoji;
 import org.telegram.ui.Cells.DialogCell;
+import org.telegram.ui.Components.BygramBadgeDrawable;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.AnimatedEmojiSpan;
 import org.telegram.ui.Components.EmptyStubSpan;
@@ -1357,12 +1358,26 @@ public class SimpleTextView extends View implements Drawable.Callback {
     private float touchDownXDrawable1 = 0;
     private float touchDownYDrawable1 = 0;
 
+    private boolean maybeClickBygramBadge;
     private boolean maybeClickDrawable2 = false;
     private float touchDownXDrawable2 = 0;
     private float touchDownYDrawable2 = 0;
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            maybeClickBygramBadge = rightDrawable2 instanceof BygramBadgeDrawable badge
+                    && !rightDrawableHidden && rightDrawableScale > 0
+                    && badge.badgeBounds().contains((int) event.getX(), (int) event.getY());
+        }
+        if (maybeClickBygramBadge && rightDrawable2 instanceof BygramBadgeDrawable badge) {
+            AndroidUtilities.rectTmp.set(badge.badgeBounds());
+            handleDrawableTouch(event, badge, v -> badge.showNotice(), false);
+            if (event.getActionMasked() == MotionEvent.ACTION_UP || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                maybeClickBygramBadge = false;
+            }
+            return true;
+        }
         boolean handled = false;
 
         if (rightDrawableOnClickListener != null && rightDrawable != null) {
@@ -1374,6 +1389,9 @@ public class SimpleTextView extends View implements Drawable.Callback {
         if (rightDrawable2OnClickListener != null && rightDrawable2 != null) {
             AndroidUtilities.rectTmp.set(rightDrawable2X - dp(16), rightDrawable2Y - dp(16),
                     rightDrawable2X + dp(16), rightDrawable2Y + dp(16));
+            if (rightDrawable2 instanceof BygramBadgeDrawable badge) {
+                AndroidUtilities.rectTmp.right = badge.badgeBounds().left;
+            }
             handled |= handleDrawableTouch(event, rightDrawable2, rightDrawable2OnClickListener, false);
         }
 

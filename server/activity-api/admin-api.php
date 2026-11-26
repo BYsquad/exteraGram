@@ -46,7 +46,7 @@ try{
     }elseif($method!=='GET'){jsonResponse(['ok'=>false,'error'=>'Method not allowed'],405);}
     $data=[];
     $data['is_owner']=isOwner($currentUserId);
-    $data['flame_count']=(int)$pdo->query('SELECT COUNT(*) FROM chat_flames WHERE days>0')->fetchColumn();
+    $data['flame_count']=(int)$pdo->query('SELECT COUNT(*) FROM chat_flames f WHERE f.days>0 AND ' . adminFlameVisibility('f'))->fetchColumn();
     $data['settings']=['bot_username'=>appSetting('bot_username')];
     $data['release']=releaseMetadata('stable');
     $data['beta']=releaseMetadata('beta');

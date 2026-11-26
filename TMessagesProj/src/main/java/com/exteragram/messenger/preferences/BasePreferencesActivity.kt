@@ -37,6 +37,7 @@ import org.telegram.messenger.R
 import org.telegram.messenger.SavedMessagesController
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.ActionBar
+import org.telegram.ui.ActionBar.ActionBarMenu
 import org.telegram.ui.ActionBar.BaseFragment
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Cells.CheckBoxCell
@@ -88,7 +89,7 @@ abstract class BasePreferencesActivity : BaseFragment() {
             setTitle(this@BasePreferencesActivity.getTitle())
             setActionBarMenuOnItemClick(object : ActionBar.ActionBarMenuOnItemClick() {
                 override fun onItemClick(id: Int) {
-                    if (id == -1) finishFragment()
+                    if (id == -1) finishFragment() else onActionBarItemClick(id)
                 }
             })
             setCastShadows(false)
@@ -98,7 +99,8 @@ abstract class BasePreferencesActivity : BaseFragment() {
         val contentView = HeaderContentView(context)
         contentView.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundGray))
 
-        actionBar.menu ?: actionBar.createMenu()
+        val menu = actionBar.menu ?: actionBar.createMenu()
+        populateActionBarMenu(menu)
 
         val simpleGlass = baseSimpleGlass
 
@@ -122,6 +124,7 @@ abstract class BasePreferencesActivity : BaseFragment() {
             setSections()
             if (needHideTitle()) actionBar.setAdaptiveBackground(this, true)
             adapter.setApplyBackground(false)
+            adapter.wrapSettingsText = wrapSettingsText()
             setClipToPadding(false)
             setPadding(0, getListTopPadding(topInset) + getPinnedHeaderOffset(), 0, 0)
 
@@ -203,6 +206,9 @@ abstract class BasePreferencesActivity : BaseFragment() {
     abstract fun getTitle(): String
 
     protected open fun initializeOptionStrings() {}
+    protected open fun populateActionBarMenu(menu: ActionBarMenu) {}
+    protected open fun onActionBarItemClick(id: Int) {}
+    protected open fun wrapSettingsText(): Boolean = false
 
     fun scrollToItem(itemId: Int) {
         if (!::listView.isInitialized) return

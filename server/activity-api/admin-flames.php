@@ -3,6 +3,11 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/chat-flames.php';
 
+function adminFlameVisibility(string $table): string {
+    return "NOT EXISTS (SELECT 1 FROM app_settings s
+        WHERE s.setting_key IN (CONCAT('metrics_optout_', $table.user_low), CONCAT('metrics_optout_', $table.user_high)))";
+}
+
 function adminFlameList(PDO $pdo, array $filters): array {
     [$today, $month] = flameCalendar();
     $pageSize = 30;
@@ -10,7 +15,7 @@ function adminFlameList(PDO $pdo, array $filters): array {
     $search = trim(is_string($filters['q'] ?? null) ? $filters['q'] : '');
     if (mb_strlen($search) > 80) throw new InvalidArgumentException('Поиск ограничен 80 символами');
     $from = ' FROM chat_flames f LEFT JOIN users a ON a.telegram_id=f.user_low LEFT JOIN users b ON b.telegram_id=f.user_high';
-    $where = ' WHERE f.days > 0';
+    $where = ' WHERE f.user_low > 0 AND f.days > 0 AND ' . adminFlameVisibility('f');
     $args = [];
     $status = $filters['status'] ?? 'all';
     switch ($status) {
@@ -96,7 +101,7 @@ function updateAdminFlame(PDO $pdo, int $admin, array $input): void {
         throw new InvalidArgumentException('Укажите дни и дату предыдущей серии до разрыва или очистите оба поля');
     }
     $update = $pdo->prepare('UPDATE chat_flames SET last_day=?,days=?,lost_day=?,lost_days=?,restore_month=?,restores=?,revision=revision+1
-        WHERE user_low=? AND user_high=? AND revision=? AND days>0');
+        WHERE user_low=? AND user_high=? AND revision=? AND days>0 AND ' . adminFlameVisibility('chat_flames'));
     $update->execute([$lastDay, $days, $lostDay, $lostDays, $month, 3 - $remaining, $low, $high, $revision]);
     if ($update->rowCount() !== 1) {
         jsonResponse(['ok' => false, 'error' => 'Серия уже изменилась. Обновите список и откройте её заново.'], 409);

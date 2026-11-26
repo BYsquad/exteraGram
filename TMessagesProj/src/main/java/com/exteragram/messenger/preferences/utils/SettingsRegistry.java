@@ -23,6 +23,8 @@ import com.exteragram.messenger.plugins.PluginsController;
 import com.exteragram.messenger.plugins.ui.PluginsInfoActivity;
 import com.exteragram.messenger.pillstack.ui.PillStackPreferencesActivity;
 import com.exteragram.messenger.preferences.BasePreferencesActivity;
+import com.exteragram.messenger.preferences.BygramOtherPreferencesActivity;
+import com.exteragram.messenger.preferences.BygramPreferencesActivity;
 import com.exteragram.messenger.preferences.GeneralPreferencesActivity;
 import com.exteragram.messenger.preferences.MainPreferencesActivity;
 import com.exteragram.messenger.preferences.OtherPreferencesActivity;
@@ -61,6 +63,8 @@ public class SettingsRegistry {
     private final ConcurrentHashMap<Integer, String> primaryAliases = new ConcurrentHashMap<>();
     private static final Map<Class<? extends BaseFragment>, Integer> categoriesIcons = Map.ofEntries(
             Map.entry(MainPreferencesActivity.class, R.drawable.extera_outline),
+            Map.entry(BygramPreferencesActivity.class, R.drawable.msg_customize),
+            Map.entry(BygramOtherPreferencesActivity.class, R.drawable.msg_settings),
             Map.entry(GeneralPreferencesActivity.class, R.drawable.msg_media),
             Map.entry(AppearancePreferencesActivity.class, R.drawable.msg_theme),
             Map.entry(ChatsPreferencesActivity.class, R.drawable.msg_discussion),

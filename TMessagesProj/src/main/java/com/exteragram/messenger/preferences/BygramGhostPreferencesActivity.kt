@@ -16,27 +16,33 @@ class BygramGhostPreferencesActivity : BasePreferencesActivity() {
         STORIES(BygramGhostMode.GHOST_NO_STORY_READ, R.string.BygramNoReadStories),
         ONLINE(BygramGhostMode.GHOST_NO_ONLINE, R.string.BygramNoOnline),
         TYPING(BygramGhostMode.GHOST_NO_TYPING, R.string.BygramNoTyping),
-        ACTIONS(BygramGhostMode.GHOST_READ_ON_ACTIONS, R.string.BygramReadOnActions)
+        ACTIONS(BygramGhostMode.GHOST_READ_ON_ACTIONS, R.string.BygramReadOnActions),
+        AUTO_OFFLINE(BygramGhostMode.GHOST_AUTO_OFFLINE, R.string.BygramGhostAutoOffline)
     }
+
+    override fun wrapSettingsText() = true
 
     override fun getTitle(): String = getString(R.string.BygramGhostMode)
 
     override fun fillItems(items: ArrayList<UItem>, adapter: UniversalAdapter) {
         val enabled = BygramGhostMode.isGhostEnabled()
         val title = if (enabled) {
-            LocaleController.formatString(R.string.BygramGhostMaster, BygramGhostMode.ghostOptionsEnabled())
+            LocaleController.formatString(R.string.BygramGhostMaster, BygramGhostMode.ghostOptionsEnabled(), Option.entries.size - 1)
         } else {
             getTitle()
         }
+        items.add(UItem.asHeader(getString(R.string.General)))
         items.add(UItem.asCheck(Option.ENABLED.ordinal + 1, title).setChecked(enabled))
+        items.add(UItem.asShadow(getString(R.string.BygramGhostInfo)))
         if (enabled) {
+            items.add(UItem.asHeader(getString(R.string.PrivacySettings)))
             for (option in Option.entries.drop(1)) {
                 items.add(UItem.asCheck(option.ordinal + 1, getString(option.label))
                     .setChecked(BygramGhostMode.getBoolean(option.key)))
             }
             items.add(UItem.asShadow(getString(R.string.BygramReadOnActionsInfo)))
+            items.add(UItem.asShadow(getString(R.string.BygramGhostAutoOfflineInfo)))
         }
-        items.add(UItem.asShadow(getString(R.string.BygramGhostInfo)))
     }
 
     override fun onClick(item: UItem, view: View, position: Int, x: Float, y: Float) {

@@ -1,11 +1,10 @@
 <p align="center">
-  <img src="TMessagesProj/src/main/res/drawable-nodpi/bygram_logo_new.png" width="96" alt="BYgram">
+  <img src="TMessagesProj/src/main/res/drawable-nodpi/bygram_user_badge.png" width="96" alt="BYgram">
 </p>
 
 <h1 align="center">BYgram Android</h1>
 
 BYgram — клиент Telegram для Android на основе [exteraGram](https://github.com/exteraSquad/exteraGram).
-В приложении используются темы, паки иконок, настройки интерфейса и система плагинов exteraGram.
 Документация Python SDK находится в [plugins-pysdk](plugins-pysdk/README.md).
 
 [Документация BYgram](docs/readme.md) · [История изменений](changelog.md) · [Канал BYgram](https://t.me/BYgram_official)
@@ -55,11 +54,12 @@ ARM build. `beta` is a universal ARM build with beta naming.
 3. [Generate a signing key](https://developer.android.com/studio/publish/app-signing#generate-key)
    and save the keystore as `TMessagesProj/config/release.keystore`. Debug builds are signed with it
    too. To update an existing BYgram installation, use the signing key of that installation.
-4. Build:
+4. Build one universal Full debug APK for `armeabi-v7a` and `arm64-v8a`:
    ```bash
-   ./gradlew :TMessagesProj:assembleFullArm64Debug
+   ./gradlew :TMessagesProj:assembleFullAfatDebug
    ```
-   The APK appears in `TMessagesProj/build/outputs/apk/`. Other variants follow the same pattern:
+   The APK appears as `BYgram-full-universal-YYYYMMDD.apk` in
+   `TMessagesProj/build/outputs/apk/fullAfat/debug/`. Other variants follow the same pattern:
    `assembleLiteArm64Release`, `assembleFullAfatRelease`, `assembleFullBetaDebug`.
 
 A `full` build compiles the plugins SDK from `plugins-pysdk/` and downloads a prebuilt plugin
@@ -68,7 +68,7 @@ analyzer from GitHub. Gradle uses the analyzer cached in `Tools/temp` for offlin
 On Windows with Java on `PATH`, run the wrapper with PowerShell.
 
 ```powershell
-java -cp gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain :TMessagesProj:assembleFullArm64Debug
+java -cp gradle/wrapper/gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain :TMessagesProj:assembleFullAfatDebug
 ```
 
 Set `python.build` in `local.properties` if the default launcher does not find Python 3.11.
@@ -79,10 +79,14 @@ The analyzer downloader accepts `GH_TOKEN` when GitHub rate-limits unauthenticat
 Telegram's own strings come from the
 [official translations](https://translations.telegram.org/en/android/). Strings that exist only in
 exteraGram are translated on [Crowdin](https://crowdin.com/project/exteralocales).
-BYgram strings are maintained alongside them in the English, Russian and Ukrainian resource files.
+BYgram strings are maintained alongside them in the resource files for
+[English](TMessagesProj/src/main/res/values/extera.xml),
+[Russian](TMessagesProj/src/main/res/values-ru/extera.xml) and
+[Ukrainian](TMessagesProj/src/main/res/values-uk/extera.xml).
 
 ## Thanks
 
+- [exteraGram](https://github.com/exteraSquad/exteraGram)
 - [Telegram for Android](https://github.com/DrKLO/Telegram)
 - [Catogram](https://github.com/Catogram/Catogram)
 - [Nekogram](https://gitlab.com/Nekogram/Nekogram)

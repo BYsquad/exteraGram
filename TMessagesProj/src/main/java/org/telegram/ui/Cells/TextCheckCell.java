@@ -57,6 +57,7 @@ public class TextCheckCell extends FrameLayout {
     private Switch checkBox;
     private boolean needDivider;
     private boolean isMultiline;
+    private boolean wrapText;
     private int height = 50;
     private int animatedColorBackground;
     private float animationProgress;
@@ -154,9 +155,36 @@ public class TextCheckCell extends FrameLayout {
         return checkBox;
     }
 
+    public void setWrapText(boolean wrap) {
+        if (wrapText == wrap) return;
+        wrapText = wrap;
+        textView.setSingleLine(!wrap);
+        textView.setMaxLines(wrap ? Integer.MAX_VALUE : 1);
+        textView.setEllipsize(wrap ? null : TextUtils.TruncateAt.END);
+        requestLayout();
+    }
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        if (isMultiline) {
+        if (wrapText) {
+            LayoutParams title = (LayoutParams) textView.getLayoutParams();
+            LayoutParams value = (LayoutParams) valueTextView.getLayoutParams();
+            int width = MeasureSpec.getSize(widthMeasureSpec);
+            boolean hasValue = valueTextView.getVisibility() == VISIBLE;
+            title.height = hasValue ? LayoutParams.WRAP_CONTENT : LayoutParams.MATCH_PARENT;
+            title.topMargin = hasValue ? AndroidUtilities.dp(10) : 0;
+            int available = Math.max(0, width - title.leftMargin - title.rightMargin);
+            int unspecified = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+            textView.measure(MeasureSpec.makeMeasureSpec(available, MeasureSpec.EXACTLY), unspecified);
+            int contentHeight = textView.getMeasuredHeight() + AndroidUtilities.dp(20);
+            if (hasValue) {
+                value.topMargin = title.topMargin + textView.getMeasuredHeight() + AndroidUtilities.dp(2);
+                valueTextView.measure(MeasureSpec.makeMeasureSpec(available, MeasureSpec.AT_MOST), unspecified);
+                contentHeight = value.topMargin + valueTextView.getMeasuredHeight();
+            }
+            int rowHeight = Math.max(AndroidUtilities.dp(hasValue ? 64 : height), contentHeight) + (needDivider ? 1 : 0);
+            super.onMeasure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(rowHeight, MeasureSpec.EXACTLY));
+        } else if (isMultiline) {
             super.onMeasure(MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
         } else {
             super.onMeasure(MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(valueTextView.getVisibility() == VISIBLE ? 64 : height) + (needDivider ? 1 : 0), MeasureSpec.EXACTLY));
